@@ -1,9 +1,0 @@
-LICENSE
-README.md
-parity.py
-pyproject.toml
-parity.egg-info/PKG-INFO
-parity.egg-info/SOURCES.txt
-parity.egg-info/dependency_links.txt
-parity.egg-info/top_level.txt
-tests/test_alarm_offline.py
