@@ -100,6 +100,25 @@ Named on the controls themselves, so a reader meets them here rather than in pro
   digest. The integral rule outranks the quantum.
 - `None` and `""` are the same cell, and `True` and `"True"` are the same cell. Distinguishing them
   would change every digest ever taken, so they are named here instead.
+- Container cells are **refused, not flattened**: a `dict`, `list`, `set`, `frozenset`, `tuple` or
+  `bytes` cell raises a named `TypeError`. Two reasons, both measured: a set has no order, so its text
+  varies between processes (six `PYTHONHASHSEED` values, two different digests for the same data), and
+  a container cell collides with the string of that container, so one dataset reads as the other.
+- Column names must be `str`, refused by name otherwise. An `int` key and its own text form would
+  otherwise hash alike, and mixed key types abort `sorted()` inside the hash.
+- `-0.0` and `0.0` are the same number and hash alike. So do `Decimal("1.0")` and the integer `1` **not**
+  agree: `Decimal` is hashed by its exact text, because converting it to `float` to reuse the
+  quantisation rule would silently collide high-precision money. Normalise a mixed numeric column
+  before hashing it.
+- The digest carries no domain or version tag, so two digests are only comparable when both come from
+  the same revision of this function **and** the same cell types. Digests taken before the escaping
+  fixes reproduce for clean data (letters, digits, ordinary floats) and may not for a column name or
+  cell carrying a backslash, a separator, or `-0.0`.
+- Unicode is not normalised: a source switching between NFC and NFD reads as a move, which is usually
+  the truth but is worth knowing before you chase it. Text containing a lone surrogate raises
+  `UnicodeEncodeError` on both the old and the new revision.
+- The adapter logs the digest and nothing re-checks it later. `verify_canonical` is the tool for that
+  and the live adapter does not call it, so the logged digest is evidence for a human, not a control.
 - The write boundary passes on empty: `0` vs `0`, and `[]` vs `[]`. It cannot tell "nothing was
   offered" from "a dead fetcher offered nothing", and it is not made to raise — a legitimately quiet
   night would then alarm, which is how controls get muted. The caller owns that distinction; the live
@@ -116,7 +135,7 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 52/52 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes 66/66 — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
 order-independence and float-stability of the hash. Note where the faults came from, because it is
@@ -142,6 +161,38 @@ contradicts "WARN-only, never raises"; and it raised `TypeError` on a generator,
 `len()` on the caller's iterable. Two probes, seven defects total, all of them of the same family:
 **a control that fails open, or a document that overclaims.** Both are the failure this repo exists
 to name.
+
+A **third** review — the same module again, this time reading it as an attacker with the tests in
+hand — found six more, and the most useful of them was not a defect in the module. **Five of the
+checks the second review added passed on the unfixed module.** The fixtures never constructed the
+collision the check named (`"x\ny"` only lands an embedded newline; a forged row has to carry its
+own `name=` prefix), the column-NAME check used a single-column row so the separator it was testing
+never appeared, and two checks asserted the exception *type* — which the unfixed module raised too,
+so asserting it could not see the fix. A test that passes with the defect present is not protection,
+it is decoration that reads as protection, and it is worse than no test because it ends the search.
+They are rewritten, and `tools/audit_tests.py` now runs the current suite against the module as it
+was before the fix and reports any check that passes on both:
+
+    python3 tools/audit_tests.py 2b08a2b     # 36 checks added since; 0 decorative
+
+Run it against your own last fix — it is the cheapest adversarial reviewer available, and it needs
+no network, no key, and no review of the diff.
+
+The six: a **dict, list, set or bytes cell** was hashed as its own `repr`, so `{"x": {"k": 1}}`
+hashed like `{"x": "{'k': 1}"}` — a cell and the text of that cell, one digest; worse, a
+**set-valued cell produced two different digests across six `PYTHONHASHSEED` values**, which is not a
+record of the data at all. Both are refused by name now rather than stringified: a container has no
+single spelling, and the honest fix for an input already outside the documented shape is to say so,
+not to pick one spelling for the caller. A **non-`str` column name** was the same aliasing one layer
+out — `{1: "x"}` hashed like `{"1": "x"}`, so a schema move from int keys to string keys would
+not read as a move — and mixing key types aborted the entire hash inside `sorted()` with CPython's
+`'<' not supported between instances of 'str' and 'int'`, naming neither the data nor the fix; column
+names must be `str` now, refused with that message. `offered_present_parity(True, 1)` returned `True`,
+because a `bool` is an `int` and a count pair of `True`/`1` looked consistent. And two ceiling claims
+are now stated as narrowly as they are true: the float/string separation is **zero-padding, not a type
+tag** (`1.5` and the string `"1.500000"` hash alike; `1`, `1.0` and `"1"` agree), and `Decimal` is
+hashed by exact text, so `Decimal("1.0")` and the integer `1` do **not** agree — a `Decimal` column
+mixed with floats reads as a move, and the fix is to normalise before hashing, not here.
 
 The encoding claim itself is fuzzed rather than asserted: `test_parity.py` now builds 2,000 random
 rows out of the characters that break encoders (`=`, the separator, a newline, a NUL, a backslash),
@@ -172,7 +223,11 @@ only control that costs real time.
 
 **Not proven:** no concurrency claim (the live adapter is single-writer and says so in the code); no
 warehouse adapter; one live nightly job on one host, and its record is nights old, not 30; and
-`--offline` runs are not gated, because the county check needs the live path's parse bookkeeping. This
+`--offline` runs are not gated, because the county check needs the live path's parse bookkeeping. And
+the obvious caveat on everything above: a check is only worth the module it was run against. Five of
+these checks passed with the defects present until `tools/audit_tests.py` was pointed at the pre-fix
+revision, so "proven" here means "fails on the pre-fix module and passes now", which is a claim
+you can reproduce rather than a claim you can believe. This
 is a v0.2 seed of the idea, not something to point at production.
 
 ## Where this is armed (not just intended)
@@ -248,6 +303,11 @@ refusal was a false alarm of the gate's own making, which is the more useful ent
 
 - **v0.2 — adapters. DONE 2026-09-18.** The gate runs at a real load boundary, nightly, on a live
   pipeline, and its digest lands in the run log. See *Where this is armed* above.
+- **v0.2.1 — DONE 2026-09-18.** Third review: container cells and non-`str` column names refused by
+  name, the `True`-as-a-count false pass closed, two ceiling claims narrowed to what they can carry,
+  and `tools/audit_tests.py` added so "this fix is pinned" stops being a claim about intent. Cut on
+  purpose from it: no domain tag inside the digest (it would move every digest to buy a versioning
+  problem this repo does not have yet), and no `Decimal` quantisation (see the blind spots).
 - **v0.3–v0.5 — cut on purpose.** (`parity scan <table>`, the cost module, generalized fault
   injection.) Not wrong, just not the bottleneck. More controls do not produce the missing
   evidence, and the missing evidence is **a real defect caught in the wild**. Notes kept, nothing
@@ -273,6 +333,8 @@ test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 bench.py          the load measurement the README quotes
 tests/            the alarm proof: an injected collapse, refused, at the real write boundary
+tools/            audit_tests.py - run the suite against the PRE-fix module; a check that passes
+                  on both detects nothing, and five of these did until it was pointed at one
 docs/             the incident this came from
 adapters/         the nightly wrapper as installed, and where it is wired
 pyproject.toml    installable; `py-modules` is load-bearing, and the file says why

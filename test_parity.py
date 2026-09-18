@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 import sys
+from decimal import Decimal
 
 from faults import (COLLAPSE, DUPLICATE, HEALTHY, RENAME, SHORT_WRITE, TRUNCATE, load,
                     present_keys, repeat_key_page, source_rows, substitute_key)
@@ -134,19 +135,45 @@ check("int 1 and float 1.0 agree (a type change is not a move)",
       canonical_hash([{"x": 1}]) == canonical_hash([{"x": 1.0}]), True)
 check("a value cannot impersonate a second column",
       canonical_hash([{"a": "x", "b": "y"}]) != canonical_hash([{"a": "x\x1fb=y"}]), True)
+# A forged row has to carry its own `name=` prefix to be a forgery: `"x\ny"` only lands an
+# embedded newline and never matches the two-line form, which is why the first draft of this
+# check passed on the unfixed module (found by the third review, 2026-09-18, and now caught
+# mechanically by tools/audit_tests.py).
 check("a value cannot impersonate a second row",
-      canonical_hash([{"a": "x"}, {"a": "y"}]) != canonical_hash([{"a": "x\ny"}]), True)
-check("a column NAME cannot impersonate either",
-      canonical_hash([{"a\x1fb": 1}]) != canonical_hash([{"a": 1, "b": 1}]), True)
-check("pinned fixture: the clean-data digest is unchanged by the escaping",
+      canonical_hash([{"a": "x"}, {"a": "y"}]) != canonical_hash([{"a": "x\na=y"}]), True)
+check("a column NAME cannot impersonate a second column",
+      canonical_hash([{"a=\x1fb": "1"}]) != canonical_hash([{"a": "", "b": "1"}]), True)
+check("ceiling pin (not a regression test): the clean-data digest does not move",
       canonical_hash([{"x": 1}])[:12], "1f206b11c23e")
 
 print("\n1d. misuse is named, not a mystery message")
-check("counts mixed with a collection: TypeError",
-      raises_typeerror(lambda: offered_present_parity(5, [1, 2])), True)
-check("unhashable keys: TypeError",
-      raises_typeerror(lambda: offered_present_parity([{"k": 1}], [{"k": 1}])), True)
-check("both sides empty: SILENT (documented blind spot, the caller owns it)",
+
+
+def raises_typeerror_with(thunk, *markers) -> bool:
+    """Asserting only the exception TYPE cannot see this fix: the unfixed module raised a
+    TypeError too, so the check passed with the defect present. Assert the message instead.
+
+    Every marker must be present. One marker is not enough where the raw error shares a word
+    with the named one: "unhashable" is in CPython's own message, so asserting it alone still
+    passed on the unfixed module (third review again, caught by tools/audit_tests.py).
+    """
+    try:
+        thunk()
+    except TypeError as e:
+        return all(m in str(e) for m in markers)
+    except Exception:
+        return False
+    return False
+
+
+check("counts mixed with a collection: named TypeError",
+      raises_typeerror_with(lambda: offered_present_parity(5, [1, 2]), "must be BOTH counts"), want=True)
+check("unhashable keys: named TypeError, cause kept in the message",
+      raises_typeerror_with(lambda: offered_present_parity([{"k": 1}], [{"k": 1}]),
+                            "BOTH collections", "unhashable"), want=True)
+check("a bool is not a count (`True == 1` used to pass as one)",
+      raises_typeerror_with(lambda: offered_present_parity(True, 1), "must be BOTH counts"), want=True)
+check("ceiling pin (not a regression test): both sides empty is SILENT (documented blind spot, the caller owns it)",
       fires(lambda: offered_present_parity([], [])), False)
 
 
@@ -160,14 +187,14 @@ check("column name carrying '=' cannot impersonate a value",
       canonical_hash([{"a=x": 1}]) != canonical_hash([{"a": "x=1"}]), want=True)
 check("column name carrying '=' cannot impersonate a second column",
       canonical_hash([{"a=b": "c"}]) != canonical_hash([{"a": "b=c"}]), want=True)
-check("a VALUE carrying '=' still cannot impersonate a column",
-      canonical_hash([{"a": "x", "b": "y"}]) != canonical_hash([{"a": "x=y"}]), want=True)
+check("a VALUE carrying '=' cannot impersonate a column either",
+      canonical_hash([{"a": "b=c"}]) != canonical_hash([{"a=b": "c"}]), want=True)
 
 print("\n1f. non-finite floats are tagged, not silently spelled like a string")
 
 check("float nan vs the string 'nan'", canonical_hash([{"x": float("nan")}]) != canonical_hash([{"x": "nan"}]), want=True)
 check("float inf vs the string 'inf'", canonical_hash([{"x": float("inf")}]) != canonical_hash([{"x": "inf"}]), want=True)
-check("nan is still order- and run-stable", canonical_hash([{"x": float("nan")}]) == canonical_hash([{"x": float("nan")}]), want=True)
+check("not a regression test: nan is still order- and run-stable", canonical_hash([{"x": float("nan")}]) == canonical_hash([{"x": float("nan")}]), want=True)
 
 print("\n1g. a string is a sequence of characters, not a collection of keys")
 
@@ -182,6 +209,39 @@ print("\n1h. WARN-only means it does not raise")
 check("empty column with min_n=0 returns nothing", share_anomaly([], name="col", min_n=0), want=None)
 check("a generator is accepted (no len() on the caller's side)",
       share_anomaly((v for v in range(1200)), name="col"), want=None)
+
+print("\n1j. the third review: shapes that were neither stable nor unambiguous")
+
+check("a dict cell is refused by name, not hashed as its own repr",
+      raises_typeerror_with(lambda: canonical_hash([{"x": {"k": 1}}]), "scalar cells"), want=True)
+check("a list cell is refused too",
+      raises_typeerror_with(lambda: canonical_hash([{"x": [1, 2]}]), "scalar cells"), want=True)
+check("a set cell is refused: its text, and so its digest, varies with PYTHONHASHSEED",
+      raises_typeerror_with(lambda: canonical_hash([{"x": {"a", "b"}}]), "scalar cells"), want=True)
+check("a bytes cell is refused (b'\x1f' hashed like the string \"b'\\\\x1f'\")",
+      raises_typeerror_with(lambda: canonical_hash([{"x": b"\x1f"}]), "scalar cells"), want=True)
+check("a non-str column NAME is refused, so {1: 'x'} cannot hash as {'1': 'x'}",
+      raises_typeerror_with(lambda: canonical_hash([{1: "x"}]), "must be str"), want=True)
+check("a None column NAME is refused",
+      raises_typeerror_with(lambda: canonical_hash([{None: "x"}]), "must be str"), want=True)
+check("mixed key types give the named error, not a raw sort TypeError",
+      raises_typeerror_with(lambda: canonical_hash([{1: "a", "b": 2}]), "must be str"), want=True)
+check("columns=[1, 'b'] is the same named error",
+      raises_typeerror_with(lambda: canonical_hash([{"x": 1}], columns=[1, "b"]), "must be str"), want=True)
+check("the str shape the live pipeline uses is untouched",
+      canonical_hash([{"a": "1", "b": "x"}], columns=["a", "b"]) ==
+      canonical_hash([{"b": "x", "a": "1"}], columns=["b", "a"]), want=True)
+
+print("\n1k. ceilings the third review named, pinned as ceilings rather than left as surprises")
+
+check("ceiling pin (not a regression test): -0.0 and 0.0 are the same number and hash alike",
+      canonical_hash([{"x": -0.0}]) == canonical_hash([{"x": 0.0}]), want=True)
+check("ceiling pin (not a regression test): Decimal is hashed by exact text, so Decimal('1.0') and int 1 disagree",
+      canonical_hash([{"x": Decimal("1.0")}]) != canonical_hash([{"x": 1}]), want=True)
+check("ceiling pin (not a regression test): float/str separation is zero-padding, not a type tag (1.5 == '1.500000')",
+      canonical_hash([{"x": 1.5}]) == canonical_hash([{"x": "1.500000"}]), want=True)
+check("ceiling pin (not a regression test): '1', 1 and 1.0 agree, and that is as far as it generalises",
+      canonical_hash([{"x": 1}]) == canonical_hash([{"x": 1.0}]) == canonical_hash([{"x": "1"}]), want=True)
 
 print("\n1i. injectivity, over random input rather than the cases above")
 

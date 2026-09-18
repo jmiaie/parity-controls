@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 class ParityViolation(AssertionError):
@@ -85,7 +85,8 @@ def offered_present_parity(offered, present, *, where: str = "write boundary",
         how a control gets muted; the caller owns that distinction. The live adapter makes it
         explicitly, per source, at the parse boundary.
     """
-    if isinstance(offered, int) and isinstance(present, int):
+    if (isinstance(offered, int) and isinstance(present, int)
+            and not isinstance(offered, bool) and not isinstance(present, bool)):
         if offered != present:
             raise ParityViolation(
                 f"{where}: offered={offered} present={present} delta={present - offered:+d}"
@@ -189,10 +190,31 @@ def _esc(s: str) -> str:
              .replace("\n", "\\n").replace("\r", "\\r"))
 
 
-def _key(s: str) -> str:
-    """Column names may not carry the `=` either - the first raw `=` in a row is the delimiter."""
+def _key(c) -> str:
+    """Column names may not carry the `=` either - the first raw `=` in a row is the delimiter.
 
-    return _esc(s).replace("=", "\\=")
+    They must also be `str`. MEASURED (third review, 2026-09-18): `{1: "x"}` and `{"1": "x"}`
+    hashed alike, because `str()` collapses a key and its own text form, and a schema move
+    between the two would not read as a move; and a row set mixing key types aborted the whole
+    hash inside `sorted()` with `'< ' not supported between instances of 'str' and 'int'`,
+    which names neither the data nor the fix. A named refusal, not a guess.
+    """
+    if not isinstance(c, str):
+        raise TypeError(
+            f"write boundary: column names must be str; got {type(c).__name__} ({c!r}). An int "
+            f"key spells like its own text form, so this row set would hash like the all-string "
+            f"one and a rename would not read as a move. Convert with str() at the boundary."
+        )
+    return _esc(c).replace("=", "\\=")
+
+
+def _validated(names) -> list:
+    """Validate, then sort the RAW names: sorting the escaped form would reorder names that
+    carry a backslash or a control character, moving digests for data that did not change."""
+    names = list(names)
+    for c in names:
+        _key(c)
+    return sorted(names)
 
 
 def _cell(v) -> str:
@@ -209,6 +231,19 @@ def _cell(v) -> str:
             # go red, and a control that cries wolf gets muted.
             return "\x00" + ("nan" if v != v else ("+inf" if v > 0 else "-inf"))
         s = str(int(v)) if v.is_integer() else f"{v:.6f}"  # kill repr drift: 0.1+0.2 == 0.3
+    elif isinstance(v, (dict, list, set, frozenset, tuple, bytearray, bytes)):
+        # MEASURED (third review, 2026-09-18): `{"x": {"k": 1}}` hashed like `{"x": "{'k': 1}"}`,
+        # a list like its own repr, and a set-valued cell produced 2 different digests across 6
+        # PYTHONHASHSEED values - a digest that varies by process is not a record of the data.
+        # Refusing is the honest fix here (unlike the non-finite float, which is tagged instead):
+        # a container is already outside the documented shape, and quietly flattening it would
+        # pick one of several defensible spellings on the caller's behalf.
+        raise TypeError(
+            f"write boundary: canonical_hash hashes scalar cells; got {type(v).__name__}. A "
+            f"container has no single spelling - a dict cell and the text of that dict would "
+            f"hash alike, and a set has no order, so its digest varies between processes "
+            f"(PYTHONHASHSEED). json.dumps() it at the boundary if that shape is really meant."
+        )
     else:
         s = str(v)
     return _esc(s)
@@ -221,10 +256,10 @@ def canonical_hash(rows, columns=None) -> str:
     canonical form, store the digest, re-hash around any repair or rebuild. Rows are
     sorted, columns are sorted, floats are quantised.
     """
-    cols = None if columns is None else sorted(columns)
+    cols = None if columns is None else _validated(columns)
     lines = []
     for r in rows:
-        use = cols if cols is not None else sorted(r.keys())
+        use = cols if cols is not None else _validated(r.keys())
         lines.append("\x1f".join(f"{_key(str(c))}={_cell(r.get(c))}" for c in use))
     lines.sort()
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
