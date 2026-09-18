@@ -16,8 +16,8 @@ echo "=== $(date -Is) start" >> "$LOG"
 
 ERR=$(mktemp)
 /srv/venv/bin/python ca_surplus_funds.py \
-    --output "$STATE/leads.csv" "$@" 2>"$ERR"
-rc=$?
+    --output "$STATE/leads.csv" "$@" 2>"$ERR" | tee -a "$LOG"
+rc=${PIPESTATUS[0]}   # tee's status is not the pipeline's; the digest line is now durable
 # Read the reason from THIS night's stderr, never from $LOG - the log accumulates, so grepping
 # it would happily report a violation from a previous night as tonight's. Prefer the gate's own
 # line, then the exception message; 'Traceback (most recent call last):' is not a reason.
