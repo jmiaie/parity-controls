@@ -71,6 +71,11 @@ Named on the controls themselves, so a reader meets them here rather than in pro
 - `offered` must be computed from the **raw** payload, before any field-name mapping. Derive it
   with the writer's own mapper and the defect is baked into both sides — the bug erases its own
   evidence and the comparison passes trivially.
+- Counted `offered` must be **distinct keys, never raw rows**. A page that repeats a key is healthy —
+  the writer dedupes it — but it makes rows outnumber keys, so the naive form alarms on good data.
+  Measured before it was assumed: 8,411 rows over 3 wallets carried 0 repeated keys, so the wrong form
+  passes today and waits for the first paging change to start crying wolf. The key-collection form
+  cannot make this mistake.
 - A row excluded from a check is a row the check cannot fail on. A "partial" or short-fetch batch
   gets asserted anyway, with the known shortfall expected as the delta.
 - Key-set comparison catches one substitution, not two compensating replacements. Hash the
@@ -89,13 +94,13 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 27/27 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes 31/31 — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
-order-independence and float-stability of the hash. Note where the faults came from: collapse,
-rename and duplicate were found by an outside reviewer, and two of the faults are there because the
-review exposed **real defects in this control** — the count-only form passed both a substitution and
-a dead write.
+order-independence and float-stability of the hash. Note where the faults came from, because it is
+the point: collapse, rename and duplicate were found by an outside reviewer, and **three** faults are
+here because review exposed real defects in this control — the count-only form passed a substitution,
+passed a dead write, and **false-fired on healthy data** when a page repeated a key.
 
 **Not proven:** any load beyond a few hundred rows in one process; no concurrency claim; no
 adapter to a real warehouse; no production deployment yet. This is a v0.1 seed of the idea,
@@ -129,6 +134,11 @@ not something to point at production tonight.
 - **v1.0 — one real deployment.** Wire the gate into the live surplus-funds pipeline and run
   it nightly for 30 nights. *Done = "30 nights, N real defects caught, zero silent writes",
   with the reports to prove it.*
+- **v1.1 — prove the ALARM, not just the check.** Every control here is proven to *raise*; nothing
+  proves the alert reaches a human. Inject one synthetic bad row into a shadow table nightly, assert
+  the alert actually arrives, then remove it. Until that exists, a silenced notifier and a healthy
+  pipeline look identical from the inside — which is the failure mode that opened this whole project.
+  *Opened by review: "neither of us has a control that was built to fail."*
 
 ## Layout
 

@@ -42,16 +42,20 @@ class ParityViolation(AssertionError):
 
 def offered_present_parity(offered, present, *, where: str = "write boundary",
                            key: str | None = None, sample: int = 3) -> bool:
-    """The write boundary. Fires on field collapse, field rename, truncation AND duplication.
+    """The write boundary. Fires on collapse, rename, truncation, duplication, substitution.
 
-    Pass COUNTS (rows the source handed you, rows the table holds afterwards). The two
-    numbers come from different places, which is exactly why this check can disagree with
-    itself and a key-count check cannot. It costs one integer comparison, so there is no
-    batch too small to run it on.
+    Prefer the KEY COLLECTIONS. It then compares key SETS, which is the only form that
+    catches a count-preserving substitution - N rows in, N rows land, one key swapped on
+    the way. Equal counts are not equal content.
 
-    Pass KEY COLLECTIONS instead and it compares key SETS - the only form that catches a
-    count-preserving substitution, where N rows go in, N rows land, and one key was
-    swapped on the way. Equal counts are not equal content.
+    If you pass COUNTS they must be counts of DISTINCT KEYS, never of raw rows. A page that
+    repeats a key is not a defect - the writer dedupes it - but it makes raw rows outnumber
+    distinct keys, so a rows-vs-keys comparison fires on healthy data. A control that cries
+    wolf gets muted, and a muted control is worse than no control. This was measured before
+    it was assumed: 8,411 rows across 3 wallets carried 0 repeated keys, so the wrong form
+    would have passed every test here and waited for the first paging change to alarm.
+
+    One comparison, so there is no batch too small to run it on.
 
     CALL THIS WHEN THE WRITE FAILS, NOT ONLY WHEN IT SUCCEEDS. A worker that dies between
     its DELETE and its INSERT leaves offered=N, present=0, and a check wired only to the
@@ -60,11 +64,13 @@ def offered_present_parity(offered, present, *, where: str = "write boundary",
         try: write(batch)
         finally: offered_present_parity(offered_keys, present_keys())
 
-    Three blind spots, named here rather than discovered by a customer:
+    Four blind spots, named here rather than discovered by a customer:
 
       * `offered` must come from the RAW payload, before any field-name mapping. Derive it
         with the same mapper that the writer uses and the defect is baked into both sides,
         so the comparison passes trivially - the bug erases its own evidence.
+      * Counts must be DISTINCT KEYS, not raw rows (see above). The set form cannot make
+        this mistake; the integer form can, and does it silently.
       * Excluding rows from the check deletes the check for exactly the rows that failed.
         A partial or short-fetch batch still gets asserted, with the known delta expected.
       * Set comparison catches a substitution but not two compensating substitutions.
@@ -112,10 +118,12 @@ def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 
                   max_share: float = 0.999) -> str | None:
     """WARN-only: returns a message, never raises. Two different defects, two messages.
 
-    MEASURED BLIND SPOT, documented rather than discovered later: a real orphan family
-    sat at max-share 0.9911 and slipped under a 0.999 trigger. Calibrate this threshold
-    from the mechanism - what fraction of rows can legitimately share a value - never
-    from the incident that motivated it.
+    MEASURED BLIND SPOT, documented rather than discovered later: in the incident the
+    dominant value sat at share 0.999947 - one value's worth of margin under a 0.999
+    trigger - and the post-fix maximum for the same family is 0.521829. Calibrate this
+    threshold from the mechanism - what fraction of rows can legitimately share a value -
+    never from the incident that motivated it. (An earlier draft of this docstring quoted
+    0.9911; the reviewer who owns the measurement has none that yields it, so it is gone.)
 
     An all-empty column is reported as UNPOPULATED, not DEGENERATE: an empty string is
     one value, so a cardinality rule would call 12 legitimately-empty columns violations

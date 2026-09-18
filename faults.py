@@ -1,6 +1,6 @@
 """Fault injection. A control is not installed until a fault has made it fire.
 
-Seven scenarios, and the first one is the one that matters:
+Eight scenarios - seven faults and one healthy shape that breaks a naive check:
 
   HEALTHY     nothing is wrong            -> every control must stay SILENT
   COLLAPSE    the reader used the wrong field name (snake_case) on a camelCase API,
@@ -11,19 +11,23 @@ Seven scenarios, and the first one is the one that matters:
   TRUNCATE    a page never lands
   SUBSTITUTE  N rows in, N rows land, one key swapped on the way (count-preserving)
   SHORT_WRITE the worker died between its DELETE and its INSERT: offered N, present 0
+  REPEAT_KEY  a page repeats a key. NOT A FAULT - the writer dedupes and the table is
+              right - but it breaks a boundary check that counts raw rows. See
+              repeat_key_page().
 
 HEALTHY gets skipped in real reviews, and a control that is silent on a fault AND
 never exercised on healthy data has not been tested - it has merely never spoken.
-SUBSTITUTE and SHORT_WRITE exist because a reviewer named them as gaps; the count-only
-write-boundary form passed both.
+SUBSTITUTE, SHORT_WRITE and REPEAT_KEY exist because a reviewer named them as gaps;
+the count-only write-boundary form passed the first two and false-fired on the third.
 """
 from __future__ import annotations
 
 import random
 from collections import namedtuple
 
-HEALTHY, COLLAPSE, RENAME, DUPLICATE, TRUNCATE, SUBSTITUTE, SHORT_WRITE = (
-    "HEALTHY", "COLLAPSE", "RENAME", "DUPLICATE", "TRUNCATE", "SUBSTITUTE", "SHORT_WRITE")
+HEALTHY, COLLAPSE, RENAME, DUPLICATE, TRUNCATE, SUBSTITUTE, SHORT_WRITE, REPEAT_KEY = (
+    "HEALTHY", "COLLAPSE", "RENAME", "DUPLICATE", "TRUNCATE", "SUBSTITUTE", "SHORT_WRITE",
+    "REPEAT_KEY")
 
 Loaded = namedtuple("Loaded", "rows present distinct_keys")
 
@@ -96,6 +100,18 @@ def substitute_key(keys):
     comparison sees it - the count-only write boundary passed this fault.
     """
     return list(keys[:-1]) + [("0x" + "de" * 20, "market-ghost", 0)]
+
+
+def repeat_key_page(rows, extra: int = 2):
+    """A page that repeats a key - normal for an API paging on a non-unique sort.
+
+    Nothing is wrong here: the writer dedupes and the table is correct. But the page has
+    more ROWS than the table has DISTINCT KEYS, so a boundary check comparing raw rows
+    against present rows fires on healthy data. Named by a reviewer who built it and then
+    measured the assumption instead of resting on it (8,411 rows, 3 wallets, 0 repeats -
+    so the wrong form passes today and waits for the first paging change to alarm).
+    """
+    return list(rows) + list(rows[:extra])
 
 
 def nav(rows) -> float:

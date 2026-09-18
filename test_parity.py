@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 from faults import (COLLAPSE, DUPLICATE, HEALTHY, RENAME, SHORT_WRITE, TRUNCATE, load,
-                    present_keys, source_rows, substitute_key)
+                    present_keys, repeat_key_page, source_rows, substitute_key)
 from parity import (ParityViolation, canonical_hash, cross_field, offered_present_parity,
                     share_anomaly, verify_canonical)
 
@@ -57,6 +57,20 @@ check("key-set form: silent when the keys match",
       fires(lambda: offered_present_parity(KEYS, present_keys(ROWS))), False)
 check("key-set form: fires when the write died before the INSERT",
       fires(lambda: offered_present_parity(KEYS, present_keys(ROWS, SHORT_WRITE))), True)
+
+print("\n1c. rows vs KEYS - a repeated key in the page false-fires the naive form")
+# Not a fault: the writer dedupes and the table is correct. But the page carries more rows
+# than the table has distinct keys, so a boundary check counting RAW ROWS alarms on healthy
+# data - the failure mode that gets a control muted. Named by review, not found by me.
+PAGE = repeat_key_page(ROWS)
+PK = present_keys(PAGE)
+check("the page really does repeat a key", len(PAGE) > len(present_keys(ROWS)), True)
+check("count-only form on RAW ROWS: FIRES on healthy data  <- false alarm",
+      fires(lambda: offered_present_parity(len(PAGE), len(PK))), True)
+check("count-only form on DISTINCT KEYS: silent",
+      fires(lambda: offered_present_parity(len(PK), len(PK))), False)
+check("key-set form: silent (there is no defect to find)",
+      fires(lambda: offered_present_parity(PK, PK)), False)
 
 print("\n2. the rejected check - rows vs COUNT(DISTINCT key)")
 # A keyed table's row count and its distinct-key count are the same number by
