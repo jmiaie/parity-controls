@@ -75,6 +75,11 @@ def offered_present_parity(offered, present, *, where: str = "write boundary",
         A partial or short-fetch batch still gets asserted, with the known delta expected.
       * Set comparison catches a substitution but not two compensating substitutions.
         Hash the canonical form (see canonical_hash) when that matters.
+      * EMPTY PASSES. offered=0, present=0 passes, and `[]` vs `[]` passes, so this control
+        cannot tell "nothing was offered" from "a dead fetcher offered nothing". It is not
+        made to raise on empty because a legitimately quiet night would then alarm, which is
+        how a control gets muted; the caller owns that distinction. The live adapter makes it
+        explicitly, per source, at the parse boundary.
     """
     if isinstance(offered, int) and isinstance(present, int):
         if offered != present:
@@ -85,7 +90,15 @@ def offered_present_parity(offered, present, *, where: str = "write boundary",
             )
         return True
 
-    o, p = set(offered), set(present)
+    try:
+        o, p = set(offered), set(present)
+    except TypeError as e:
+        # Caller misuse, not a data defect, so it stays a TypeError - but the default
+        # message ("'int' object is not iterable") sends the reader to the wrong place.
+        raise TypeError(
+            f"{where}: offered/present must be BOTH counts or BOTH collections of hashable "
+            f"keys; got {type(offered).__name__} and {type(present).__name__} ({e})"
+        ) from e
     if o != p:
         missing, extra = sorted(o - p, key=repr), sorted(p - o, key=repr)
         raise ParityViolation(
@@ -145,12 +158,28 @@ def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 
     return None
 
 
+def _esc(s: str) -> str:
+    """A value must not be able to impersonate structure.
+
+    MEASURED: without this, `{"a": "x", "b": "y"}` and `{"a": "x\x1fb=y"}` produced the same
+    digest, and a value carrying a newline can merge two rows into one line. Escaping is
+    identity on clean data, so digests taken before this change still reproduce.
+    """
+    return (s.replace("\\", "\\\\").replace("\x1f", "\\x1f")
+             .replace("\n", "\\n").replace("\r", "\\r"))
+
+
 def _cell(v) -> str:
     if v is None:
-        return ""
-    if isinstance(v, float):
-        return f"{v:.6f}"  # kill repr drift: 0.1 + 0.2 must not change the hash
-    return str(v)
+        s = ""
+    elif isinstance(v, float):
+        # An integral float prints without its decimal tail so that int 1 and float 1.0
+        # agree. A column that comes back 1.0 instead of 1 is a type change, not a move,
+        # and a digest that calls it a move gets muted.
+        s = str(int(v)) if v.is_integer() else f"{v:.6f}"  # kill repr drift: 0.1+0.2 == 0.3
+    else:
+        s = str(v)
+    return _esc(s)
 
 
 def canonical_hash(rows, columns=None) -> str:
@@ -164,7 +193,7 @@ def canonical_hash(rows, columns=None) -> str:
     lines = []
     for r in rows:
         use = cols if cols is not None else sorted(r.keys())
-        lines.append("\x1f".join(f"{c}={_cell(r.get(c))}" for c in use))
+        lines.append("\x1f".join(f"{_esc(str(c))}={_cell(r.get(c))}" for c in use))
     lines.sort()
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 

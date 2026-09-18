@@ -13,9 +13,10 @@ no failed run. The position book was wrong, and every dashboard was green. Case 
 ```bash
 python3 test_parity.py   # the fault matrix: every control must fire on its fault, stay silent when healthy
 python3 demo.py          # the money: 97 rows vanish and the book is off by 22.7%
+python3 bench.py         # the load: a million rows, so the numbers above can be argued with
 ```
 
-No dependencies. Python 3.10+. Four files, all short enough to read in one sitting.
+No dependencies. Python 3.10+. Five files, all short enough to read in one sitting.
 
 ## What the demo prints
 
@@ -82,6 +83,17 @@ Named on the controls themselves, so a reader meets them here rather than in pro
   canonical form when that matters.
 - `share_anomaly` is a heuristic whose threshold must come from the mechanism. It is WARN-only for
   that reason: it returns a message and never raises.
+- `canonical_hash` wants **typed** rows. A CSV round trip makes every cell a string, so a repair
+  that goes through CSV moves the digest for non-integral numbers although nothing moved. Integral
+  values survive it — `1`, `1.0` and `"1"` all print as `1`.
+- Floats are quantised to six decimals, so two values closer than `1e-6` hash equal. Deliberate:
+  that is what stops `0.1 + 0.2` from reading as a move.
+- `None` and `""` are the same cell, and `True` and `"True"` are the same cell. Distinguishing them
+  would change every digest ever taken, so they are named here instead.
+- The write boundary passes on empty: `0` vs `0`, and `[]` vs `[]`. It cannot tell "nothing was
+  offered" from "a dead fetcher offered nothing", and it is not made to raise — a legitimately quiet
+  night would then alarm, which is how controls get muted. The caller owns that distinction; the live
+  adapter makes it per source, at the parse boundary.
 
 ## Rejected on purpose
 
@@ -94,16 +106,36 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 31/31 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes 39/39 — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
 order-independence and float-stability of the hash. Note where the faults came from, because it is
 the point: collapse, rename and duplicate were found by an outside reviewer, and **three** faults are
 here because review exposed real defects in this control — the count-only form passed a substitution,
-passed a dead write, and **false-fired on healthy data** when a page repeated a key.
+passed a dead write, and **false-fired on healthy data** when a page repeated a key. Two more come from
+an adversarial probe run against this module rather than a reading of it (2026-09-18): a value carrying
+the column separator could impersonate a second column — and a newline, a second row — so two different
+datasets hashed identically; and an integer column arriving as `1.0` moved the digest, a type change
+read as a move. Both fixed, both now pinned by a test, and the escaping is identity on clean data so
+every digest taken before it still reproduces.
 
-**Not proven:** load beyond a couple of thousand rows per run in one process; no concurrency
-claim (the live adapter is single-writer and says so in the code); no warehouse adapter; one
+**Measured, one process, one core** — `python3 bench.py` reproduces it, on 2026-09-18 hardware, and
+these are that run's numbers rather than a best-of:
+
+| rows | set parity | canonical_hash | share_anomaly | peak RSS |
+|---|---|---|---|---|
+| 100,000 | 0.01s | 0.58s | 0.01s | 88 MB |
+| 1,000,000 | 0.16s | 6.17s | 0.08s | 737 MB |
+
+Timing on a shared host varies by a factor of two between runs (an earlier pass on the same box read
+3.48s for the million-row hash), which is why the command is in the repo and the number is not a
+badge.
+
+The 738 MB includes building the million-row list inside the measuring process, so read it as an upper
+bound rather than the library's own footprint. The write boundary is one comparison; the hash is the
+only control that costs real time.
+
+**Not proven:** no concurrency claim (the live adapter is single-writer and says so in the code); no warehouse adapter; one
 live nightly job on one host, and its record is nights old, not 30. This is a v0.2 seed of the
 idea, not something to point at production.
 
@@ -123,9 +155,10 @@ surplus-funds pipeline. `write_csv_gated()` replaced the bare CSV write on 2026-
 - **Missing dependency = no write.** If `parity` is not importable the run refuses, loudly.
   A corrupt lead list is worse than a missing one, and the nightly digest is how those two stop
   looking identical from the outside.
-- **The adapter's own fault matrix, 14/14** (`tests/test_write_gate.py`, in the repo it guards):
+- **The adapter's own fault matrix, 16/16** (`tests/test_write_gate.py`, in the repo it guards):
   refuses a silent collapse, a count-preserving substitution, a partial write, and its own absent
-  dependency — and leaves the prior file byte-identical in each of those cases.
+  dependency — leaving the prior file byte-identical in each case. It also pins the one bug the live
+  run found in the gate itself: night 1 refused a healthy night because the check spanned a filter.
 
 Nightly at 05:00 via `adapters/surplus-gate-nightly.sh` — the same file, host paths and all, that
 cron actually runs, so the wiring can be read rather than taken on faith. stdout is one line: lead
@@ -178,6 +211,7 @@ parity.py         four controls, stdlib only
 faults.py         fault injectors + the toy position book that prices a collapse
 test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
+bench.py          the load measurement the README quotes
 docs/             the incident this came from
 adapters/         the nightly wrapper as installed, and where it is wired
 ```
@@ -188,3 +222,11 @@ Private, deliberately. The thing this repo is missing is not a feature — it is
 the wild, and until that exists the honest state is "unproven in production". MIT as soon as it has
 one, so the first outside reader can check the claim instead of taking it. Cost of the whole thing
 today: zero dependencies, zero cloud, one nightly run on a host that was already up.
+
+Two consequences of that decision, stated rather than left for a reader to discover:
+
+- **There is no `LICENSE` file**, so the default applies: all rights reserved. Correct while private,
+  wrong the moment anything outside this machine needs it.
+- **CI is parked** (`.github/workflows/ci.yml.disabled`). Actions minutes on a private repo for this
+  account are exhausted, and a check that fails on every commit trains its owner to ignore red.
+  `python3 test_parity.py` is the same five seconds, run locally, and it is what the push path runs.

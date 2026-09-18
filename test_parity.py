@@ -32,6 +32,17 @@ def fires(fn) -> bool:
     return False
 
 
+def raises_typeerror(fn) -> bool:
+    """Caller misuse must be named as misuse, never as a data defect."""
+    try:
+        fn()
+    except TypeError:
+        return True
+    except ParityViolation:
+        return False
+    return False
+
+
 ROWS = source_rows()
 print(f"source rows: {len(ROWS)}\n")
 
@@ -114,6 +125,28 @@ check("float drift does not", canonical_hash([{"x": 0.1 + 0.2}]) == canonical_ha
       True)
 check("verify_canonical fires on a moved digest",
       fires(lambda: verify_canonical(load(ROWS, HEALTHY).rows, c, what="positions")), True)
+
+print("\n5b. canonical hash - the forms that must NOT collide")
+# Found by adversarial probe, 2026-09-18, not by reading the code: sorted columns joined with
+# a separator is only injective if a VALUE cannot contain the separator. It could.
+check("int 1 and float 1.0 agree (a type change is not a move)",
+      canonical_hash([{"x": 1}]) == canonical_hash([{"x": 1.0}]), True)
+check("a value cannot impersonate a second column",
+      canonical_hash([{"a": "x", "b": "y"}]) != canonical_hash([{"a": "x\x1fb=y"}]), True)
+check("a value cannot impersonate a second row",
+      canonical_hash([{"a": "x"}, {"a": "y"}]) != canonical_hash([{"a": "x\ny"}]), True)
+check("a column NAME cannot impersonate either",
+      canonical_hash([{"a\x1fb": 1}]) != canonical_hash([{"a": 1, "b": 1}]), True)
+check("pinned fixture: the clean-data digest is unchanged by the escaping",
+      canonical_hash([{"x": 1}])[:12], "1f206b11c23e")
+
+print("\n1d. misuse is named, not a mystery message")
+check("counts mixed with a collection: TypeError",
+      raises_typeerror(lambda: offered_present_parity(5, [1, 2])), True)
+check("unhashable keys: TypeError",
+      raises_typeerror(lambda: offered_present_parity([{"k": 1}], [{"k": 1}])), True)
+check("both sides empty: SILENT (documented blind spot, the caller owns it)",
+      fires(lambda: offered_present_parity([], [])), False)
 
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)
