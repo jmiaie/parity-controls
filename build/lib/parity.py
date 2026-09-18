@@ -37,9 +37,6 @@ __all__ = [
 ]
 
 
-__version__ = "0.2.0"
-
-
 class ParityViolation(AssertionError):
     """Raised when a control fires. An AssertionError so plain tooling treats it as failure."""
 

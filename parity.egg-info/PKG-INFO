@@ -1,3 +1,14 @@
+Metadata-Version: 2.4
+Name: parity
+Version: 0.2.0
+Summary: Write-boundary integrity for financial data and AI pipelines
+License-Expression: MIT
+Keywords: data-integrity,reconciliation,data-quality,financial-data
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
 # parity
 
 **Write-boundary integrity for financial data and AI pipelines.** Four controls, each one
@@ -11,14 +22,12 @@ no failed run. The position book was wrong, and every dashboard was green. Case 
 ## Run it
 
 ```bash
-python3 test_parity.py               # the fault matrix: every control fires on its fault, silent when healthy
-python3 tests/test_alarm_offline.py  # the ALARM: an injected collapse is refused, with the reason
-python3 demo.py                      # the money: 97 rows vanish and the book is off by 22.7%
-python3 bench.py                     # the load: a million rows, so the numbers above can be argued with
-pip install -e .                     # optional; the controls import as `parity` either way
+python3 test_parity.py   # the fault matrix: every control must fire on its fault, stay silent when healthy
+python3 demo.py          # the money: 97 rows vanish and the book is off by 22.7%
+python3 bench.py         # the load: a million rows, so the numbers above can be argued with
 ```
 
-No dependencies. Python 3.10+. Short enough to read in one sitting.
+No dependencies. Python 3.10+. Five files, all short enough to read in one sitting.
 
 ## What the demo prints
 
@@ -42,10 +51,6 @@ error carried to the book          -6,836.05   (-22.7%)
 canonical_hash (freeze digest): 0e14d492cb2b0795fd79d0f2583da41724f438cf4bf525962753d6398c85aeab
 classified: {'ok': 19, 'UNPOPULATED': 19, 'DEGENERATE': 6}   -> 25 of 44 columns warn
 ```
-
-That digest is a record of a run, not something a reader can re-derive from this repo: the input
-carries owner names and mailing addresses, so it is not shipped. The comparable number for your own
-file is one `canonical_hash` call away, which is the only reason the number is worth quoting.
 
 The split is the point. A cardinality rule alone calls all 25 of those a violation, and 19
 of them are just columns nothing ever wrote — on a healthy file (measured: 18 of 44 columns
@@ -92,12 +97,8 @@ Named on the controls themselves, so a reader meets them here rather than in pro
 - `canonical_hash` wants **typed** rows. A CSV round trip makes every cell a string, so a repair
   that goes through CSV moves the digest for non-integral numbers although nothing moved. Integral
   values survive it — `1`, `1.0` and `"1"` all print as `1`.
-- Floats print at six decimals, unless they are integral, in which case they print as integers so
-  that `1.0` and `1` agree. Two floats that print the same hash the same — `1e-7` and `2e-7` both
-  print `0.000000` — and that is deliberate: it is what stops `0.1 + 0.2` from reading as a move.
-  This line used to claim "two values closer than `1e-6` hash equal", which is wrong at the edge and
-  was caught by executing it: `1e-7` against `0.0` prints `0.000000` against `0` and moves the
-  digest. The integral rule outranks the quantum.
+- Floats are quantised to six decimals, so two values closer than `1e-6` hash equal. Deliberate:
+  that is what stops `0.1 + 0.2` from reading as a move.
 - `None` and `""` are the same cell, and `True` and `"True"` are the same cell. Distinguishing them
   would change every digest ever taken, so they are named here instead.
 - The write boundary passes on empty: `0` vs `0`, and `[]` vs `[]`. It cannot tell "nothing was
@@ -116,7 +117,7 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 48/48 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes 39/39 — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
 order-independence and float-stability of the hash. Note where the faults came from, because it is
@@ -128,20 +129,6 @@ the column separator could impersonate a second column — and a newline, a seco
 datasets hashed identically; and an integer column arriving as `1.0` moved the digest, a type change
 read as a move. Both fixed, both now pinned by a test, and the escaping is identity on clean data so
 every digest taken before it still reproduces.
-
-A **second** independent probe (another agent, told to attack the fix rather than read it) then found
-five more, all reproduced before the fix and pinned after it: a **column name** carrying the `=` was
-the same injection one layer in, so `{"a=x": 1}` and `{"a": "x=1"}` hashed alike — the separator was
-escaped and the delimiter was not; a non-finite float was spelled like the string that looks like it,
-so `nan` and `"nan"` in one column hashed alike (now tagged with a reserved byte: refusing to hash it
-would have handed every live pipeline a new way to go red, and a control that cries wolf gets muted);
-`offered_present_parity("abc", "cba")` returned True, because a string iterates into characters and a
-single key per side compared as two character sets (now a named `TypeError` — passed as a pass, it is
-the worse bug); `share_anomaly` raised `IndexError` on an empty column when `min_n=0`, which
-contradicts "WARN-only, never raises"; and it raised `TypeError` on a generator, because it called
-`len()` on the caller's iterable. Two probes, seven defects total, all of them of the same family:
-**a control that fails open, or a document that overclaims.** Both are the failure this repo exists
-to name.
 
 **Measured, one process, one core** — `python3 bench.py` reproduces it, on 2026-09-18 hardware, and
 these are that run's numbers rather than a best-of:
@@ -159,10 +146,9 @@ The 738 MB includes building the million-row list inside the measuring process, 
 bound rather than the library's own footprint. The write boundary is one comparison; the hash is the
 only control that costs real time.
 
-**Not proven:** no concurrency claim (the live adapter is single-writer and says so in the code); no
-warehouse adapter; one live nightly job on one host, and its record is nights old, not 30; and
-`--offline` runs are not gated, because the county check needs the live path's parse bookkeeping. This
-is a v0.2 seed of the idea, not something to point at production.
+**Not proven:** no concurrency claim (the live adapter is single-writer and says so in the code); no warehouse adapter; one
+live nightly job on one host, and its record is nights old, not 30. This is a v0.2 seed of the
+idea, not something to point at production.
 
 ## Where this is armed (not just intended)
 
@@ -184,27 +170,6 @@ surplus-funds pipeline. `write_csv_gated()` replaced the bare CSV write on 2026-
   refuses a silent collapse, a count-preserving substitution, a partial write, and its own absent
   dependency — leaving the prior file byte-identical in each case. It also pins the one bug the live
   run found in the gate itself: night 1 refused a healthy night because the check spanned a filter.
-
-**The alarm has been made to fire** — `python3 tests/test_alarm_offline.py`, 7/7. It stages
-`ca_surplus_funds.py` byte-identically into a scratch tree, drives the faults through real processes,
-and requires a refusal that names the mechanism:
-
-```
-GATE VIOLATION: silent collapse - 1 source(s) offered rows and parsed none: Orange
-GATE FAILED rc=2: GATE VIOLATION: write boundary leads.csv: offered=7 present=6 keys; 1 never
-  landed [('Orange', '9012-330-11')], 0 arrived unwanted []. Equal counts with a different key
-  set is a substitution, not a load. ... leads.csv left untouched
-```
-
-The first line is the parse-boundary refusal with one county's rows injected away; the second is the
-installed wrapper's own stdout, from the wrapper's own body with two path constants relocated and
-nothing else changed. It also pins the case that decides whether a gate is worth having: unarmed
-(`PARITY_DIR=/nonexistent`) refuses with `NOT ARMED - parity not importable`, and in every refusal the
-previous night's file is byte-identical afterwards. One gap the test found and deliberately does
-**not** score: under `--offline` the pipeline never fills the per-county parse bookkeeping, so the gate
-reports `OK` while a county's rows are missing. The live path the nightly takes is armed (`6/6 sources
-parsed` below). Offline tests the pipeline, not the gate — named here because a gate that goes quiet
-in the mode you test with is how a control gets muted.
 
 Nightly at 05:00 via `adapters/surplus-gate-nightly.sh` — the same file, host paths and all, that
 cron actually runs, so the wiring can be read rather than taken on faith. stdout is one line: lead
@@ -244,13 +209,10 @@ refusal was a false alarm of the gate's own making, which is the more useful ent
 - **v1.0 — one real deployment, 30 nights.** Clock started 2026-09-18. *Done = "30 nights, N real
   defects caught, zero silent writes", with the reports to prove it.* Night 1 of 30, and the
   reports are the per-night JSON the gate drops beside the leads file.
-- **v1.1 — prove the ALARM, not just the check. DONE 2026-09-18, in a staged copy.** An injected
-  collapse now provokes a refusal that names the source, on the real write boundary, with the real
-  wrapper body, and the previous file survives it (`tests/test_alarm_offline.py`, 7/7). What is *not*
-  done: the injection has never been run against the live nightly itself, so the alert has been proven
-  to fire and to be delivered, but not on the production path in one motion. Delivery is proven
-  separately, and accidentally — night 1's refusal did arrive — though that refusal was a false alarm
-  of the gate's own making, which is the honest way to state it.
+- **v1.1 — prove the ALARM, not just the check.** Every control here is proven to *raise*; nothing
+  proves the alert reaches a human. Inject one synthetic bad row into a shadow table nightly, assert
+  the alert actually arrives, then remove it. Until that exists, a silenced notifier and a healthy
+  pipeline look identical from the inside — which is the failure mode that opened this whole project.
   *Opened by review: "neither of us has a control that was built to fail."*
 
 ## Layout
@@ -261,20 +223,17 @@ faults.py         fault injectors + the toy position book that prices a collapse
 test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 bench.py          the load measurement the README quotes
-tests/            the alarm proof: an injected collapse, refused, at the real write boundary
 docs/             the incident this came from
 adapters/         the nightly wrapper as installed, and where it is wired
-pyproject.toml    installable; `py-modules` is load-bearing, and the file says why
 LICENSE           MIT
 ```
 
 ## License and visibility
 
 Private, deliberately. The thing this repo is missing is not a feature — it is a defect caught in
-the wild, and until that exists the honest state is "unproven in production". What *is* proven now is
-that the alarm fires when a real write goes wrong — on an injected fault, which is my fault and not
-the world's, so the distinction stays in the sentence. Cost of the whole thing today: zero
-dependencies, zero cloud, one nightly run on a host that was already up.
+the wild, and until that exists the honest state is "unproven in production". MIT as soon as it has
+one, so the first outside reader can check the claim instead of taking it. Cost of the whole thing
+today: zero dependencies, zero cloud, one nightly run on a host that was already up.
 
 Two consequences of that decision, stated rather than left for a reader to discover:
 

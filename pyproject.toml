@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parity"
+version = "0.2.0"
+description = "Write-boundary integrity for financial data and AI pipelines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["data-integrity", "reconciliation", "data-quality", "financial-data"]
+dependencies = []
+
+[tool.setuptools]
+# NOT optional. Without it, auto-discovery sees a flat layout with no package directory and
+# builds a wheel whose only contents are metadata, so `import parity` fails on an installed
+# copy while working fine from the checkout - the worst kind of packaging bug, because the
+# repo's own tests never touch it. Verified by installing the wheel into a clean venv.
+py-modules = ["parity"]

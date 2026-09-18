@@ -148,5 +148,39 @@ check("unhashable keys: TypeError",
 check("both sides empty: SILENT (documented blind spot, the caller owns it)",
       fires(lambda: offered_present_parity([], [])), False)
 
+
+# ---------------------------------------------------------------------------
+# 1e-1i. The second audit, run by an independent agent that only executed code.
+# Five counterexamples, all reproduced before the fix and pinned after it.
+# ---------------------------------------------------------------------------
+print("\n1e. row encoding: nothing may impersonate structure")
+
+check("column name carrying '=' cannot impersonate a value",
+      canonical_hash([{"a=x": 1}]) != canonical_hash([{"a": "x=1"}]), want=True)
+check("column name carrying '=' cannot impersonate a second column",
+      canonical_hash([{"a=b": "c"}]) != canonical_hash([{"a": "b=c"}]), want=True)
+check("a VALUE carrying '=' still cannot impersonate a column",
+      canonical_hash([{"a": "x", "b": "y"}]) != canonical_hash([{"a": "x=y"}]), want=True)
+
+print("\n1f. non-finite floats are tagged, not silently spelled like a string")
+
+check("float nan vs the string 'nan'", canonical_hash([{"x": float("nan")}]) != canonical_hash([{"x": "nan"}]), want=True)
+check("float inf vs the string 'inf'", canonical_hash([{"x": float("inf")}]) != canonical_hash([{"x": "inf"}]), want=True)
+check("nan is still order- and run-stable", canonical_hash([{"x": float("nan")}]) == canonical_hash([{"x": float("nan")}]), want=True)
+
+print("\n1g. a string is a sequence of characters, not a collection of keys")
+
+try:
+    offered_present_parity("abc", "cba")
+    check("one key per side passed as a string is refused, not silently passed", got=False, want=True)
+except TypeError:
+    check("one key per side passed as a string is refused, not silently passed", got=True, want=True)
+
+print("\n1h. WARN-only means it does not raise")
+
+check("empty column with min_n=0 returns nothing", share_anomaly([], name="col", min_n=0), want=None)
+check("a generator is accepted (no len() on the caller's side)",
+      share_anomaly((v for v in range(1200)), name="col"), want=None)
+
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)
