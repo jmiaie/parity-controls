@@ -214,6 +214,7 @@ demo.py           the same failure in dollars
 bench.py          the load measurement the README quotes
 docs/             the incident this came from
 adapters/         the nightly wrapper as installed, and where it is wired
+LICENSE           MIT
 ```
 
 ## License and visibility
@@ -225,8 +226,14 @@ today: zero dependencies, zero cloud, one nightly run on a host that was already
 
 Two consequences of that decision, stated rather than left for a reader to discover:
 
-- **There is no `LICENSE` file**, so the default applies: all rights reserved. Correct while private,
-  wrong the moment anything outside this machine needs it.
-- **CI is parked** (`.github/workflows/ci.yml.disabled`). Actions minutes on a private repo for this
-  account are exhausted, and a check that fails on every commit trains its owner to ignore red.
-  `python3 test_parity.py` is the same five seconds, run locally, and it is what the push path runs.
+- **Licensed MIT** even though it is private. Visibility and licensing are different decisions: with
+  no `LICENSE` the default is all rights reserved, which is wrong for a portfolio artefact and would
+  force the licensing call at the worst possible moment. Adding it publishes nothing.
+- **CI is parked, and the push path took its job** (`.github/workflows/ci.yml.disabled`). Actions
+  minutes on a private repo for this account are exhausted, and a check that fails on every commit
+  trains its owner to ignore red — so the suite runs where the push happens instead. Any repo's
+  `test_*.py` must pass before `gitpush.sh` will land anything; a deliberate failing check was
+  planted to prove it, and `origin` was confirmed unmoved at the old SHA while the push was refused.
+  Escape hatch for a hotfix: `SKIP_TESTS=1`. Going public returns the badge for free (Actions is
+  unmetered on public repos), which is the one argument for the visibility switch that is not about
+  the reader.
