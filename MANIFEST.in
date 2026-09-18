@@ -1,0 +1,22 @@
+# sdist contents. The honesty-critical files ship, not just parity.py: a control that
+# travels without its fault injectors, its tests and its licence ships as a claim.
+include py.typed
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include CODE_OF_CONDUCT.md
+include demo.py
+include bench.py
+include faults.py
+include test_parity.py
+
+recursive-include tests *
+recursive-include examples *
+recursive-include docs *
+
+# Not shipped: CI config and bytecode caches.
+prune .github
+global-exclude __pycache__
+global-exclude *.py[cod]

@@ -1,0 +1,27 @@
+# Normalise line endings in the repository, so the diffs people read match what the tools
+# write. This repo is text-first: Python, Markdown, and one shell script.
+* text=auto eol=lf
+
+# Ours is a shell script with a shebang; it must keep LF endings to stay executable.
+*.sh text eol=lf
+
+# Assets that must never be line-ending-rewritten or merged as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.whl binary
+*.parquet binary
+*.xlsx binary
+*.sqlite binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+
+# Review aid: the right diff driver per language.
+*.py diff=python
+*.md diff=markdown

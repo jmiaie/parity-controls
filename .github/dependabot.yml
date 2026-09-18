@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # The project has zero runtime dependencies (`dependencies = []` in pyproject.toml), so
+  # this entry is mostly a no-op. That is the point: if a pull request ever appears here,
+  # a dependency has been added without anyone deciding to, and the notice is the decision
+  # point. Keep it.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # CI is parked as .github/workflows/ci.yml.disabled, but the workflow file still pins its
+  # actions, and it comes back to life if the repo goes public. Version bumps stay cheap.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

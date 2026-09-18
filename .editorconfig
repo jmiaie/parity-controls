@@ -1,0 +1,20 @@
+# EditorConfig - https://editorconfig.org
+# Applied by editors that support it; nothing in the build or the checks reads this file.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+# Markdown uses trailing spaces as hard line breaks: two spaces at the end of a line is a
+# <br/>, so trimming them silently changes the rendered document.
+[*.[mM][dD]]
+trim_trailing_whitespace = false

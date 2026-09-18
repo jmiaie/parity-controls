@@ -12,13 +12,22 @@ no failed run. The position book was wrong, and every dashboard was green. Case 
 
 ```bash
 python3 test_parity.py               # the fault matrix: every control fires on its fault, silent when healthy
-python3 tests/test_alarm_offline.py  # the ALARM: an injected collapse is refused, with the reason
-python3 demo.py                      # the money: 97 rows vanish and the book is off by 22.7%
+python3 -m pytest -q                 # the same assertions, collectable (needs the dev extra: pip install -e '.[dev]')
+python3 examples/quickstart.py       # the four controls on a small dataset, healthy and broken
+demo.py                              # the money: 97 rows vanish and the book is off by 22.7%
 python3 bench.py                     # the load: a million rows, so the numbers above can be argued with
 pip install -e .                     # optional; the controls import as `parity` either way
 ```
 
-No dependencies. Python 3.10+. Short enough to read in one sitting.
+`make check` runs the gate (fault matrix, then the demo). No runtime dependencies. Python 3.10+.
+Short enough to read in one sitting.
+
+> **CI is parked.** `.github/workflows/ci.yml.disabled` never executed on GitHub — the runner was
+> assigned and never picked the job up (`runner_id: null`, `steps: []`), the signature of exhausted
+> Actions minutes on a private repo. It is disabled rather than left red so that red keeps meaning
+> something. Both its steps pass locally. Re-enable with
+> `git mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml` once minutes exist or the repo
+> is public. Until then `make check` is the gate.
 
 ## What the demo prints
 
@@ -252,7 +261,11 @@ surplus-funds pipeline. `write_csv_gated()` replaced the bare CSV write on 2026-
   dependency — leaving the prior file byte-identical in each case. It also pins the one bug the live
   run found in the gate itself: night 1 refused a healthy night because the check spanned a filter.
 
-**The alarm has been made to fire** — `python3 tests/test_alarm_offline.py`, 7/7. It stages
+**The alarm has been made to fire** — `python3 tests/test_alarm_offline.py`, 7/7. **Read the
+qualifier:** that 7/7 was measured on the host that carries the pipeline, and a fresh clone prints
+`SKIP: integration test, inputs absent` and exits 0, because the test drives the real wrapper against
+real inputs rather than shipping them. A skip that exits 0 is not a pass, so the number is quoted
+with the environment it came from. It stages
 `ca_surplus_funds.py` byte-identically into a scratch tree, drives the faults through real processes,
 and requires a refusal that names the mechanism:
 

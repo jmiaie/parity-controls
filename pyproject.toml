@@ -4,14 +4,44 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "parity"
-version = "0.2.1"
+version = "0.3.0"
 description = "Write-boundary integrity for financial data and AI pipelines"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["data-integrity", "reconciliation", "data-quality", "financial-data"]
+authors = [{name = "Micap AI LLC"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Quality Assurance",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/jmiaie/parity"
+Repository = "https://github.com/jmiaie/parity"
+Issues = "https://github.com/jmiaie/parity/issues"
+Changelog = "https://github.com/jmiaie/parity/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+# The library itself stays zero-dependency: `dependencies = []` above is a claim the
+# README makes and the install path has to keep. These extras are for contributors only -
+# nothing in parity.py imports pytest or ruff.
+dev = [
+    "pytest>=7",
+    "ruff>=0.6",
+]
 
 [tool.setuptools]
 # NOT optional. Without it, auto-discovery sees a flat layout with no package directory and
@@ -19,3 +49,8 @@ dependencies = []
 # copy while working fine from the checkout - the worst kind of packaging bug, because the
 # repo's own tests never touch it. Verified by installing the wheel into a clean venv.
 py-modules = ["parity"]
+
+[tool.pytest.ini_options]
+# testpaths keeps a bare `pytest` pointed at this repo's own gate rather than whatever
+# unrelated test files happen to be under the working directory.
+testpaths = ["tests"]

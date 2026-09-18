@@ -9,9 +9,11 @@ Four controls, in the order they are worth adopting:
 
 Rules this library holds itself to:
 
-  * A control that has never been observed to fail is not a control. Every function here
-    ships with a fault in faults.py that makes it fire, and test_parity.py fails if any
-    control goes quiet.
+  * A control that has never been observed to fail is not a control. Every RAISING control
+    here ships with a fault in faults.py that makes it fire, and test_parity.py fails if any
+    control goes quiet. `share_anomaly` is the one exception and is labelled as one: it is
+    WARN-only by design and never raises, so it is exercised on the defect AND on healthy
+    data rather than made to fire.
   * Silent when healthy; when it fires it names the mechanism. An alert that lists
     possibilities gets muted, and a muted alert is worse than no alert.
   * Blind spots are documented on the function, not discovered later by a customer.
@@ -37,7 +39,7 @@ __all__ = [
 ]
 
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 
 class ParityViolation(AssertionError):
@@ -68,7 +70,7 @@ def offered_present_parity(offered, present, *, where: str = "write boundary",
         try: write(batch)
         finally: offered_present_parity(offered_keys, present_keys())
 
-    Four blind spots, named here rather than discovered by a customer:
+    Five blind spots, named here rather than discovered by a customer:
 
       * `offered` must come from the RAW payload, before any field-name mapping. Derive it
         with the same mapper that the writer uses and the defect is baked into both sides,
@@ -142,8 +144,8 @@ def cross_field(pairs, mapping, *, name: str = "cross-field", sample: int = 3) -
 
 
 def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 1000,
-                  max_share: float = 0.999) -> str | None:
-    """WARN-only: returns a message, never raises. Two different defects, two messages.
+                  max_share: float = 0.999, min_empty_share: float = 0.5) -> str | None:
+    """WARN-only: returns a message, never raises. Distinct defects, distinct messages.
 
     MEASURED BLIND SPOT, documented rather than discovered later: in the incident the
     dominant value sat at share 0.999947 - one value's worth of margin under a 0.999
@@ -156,6 +158,16 @@ def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 
     one value, so a cardinality rule would call 12 legitimately-empty columns violations
     on a healthy file (measured: 18 of 44 columns on a real lead table). Different defect,
     different message, different fix.
+
+    A PARTIALLY-empty column is NOT reported as UNPOPULATED. The claim "nothing wrote this
+    column" is only made when the modal value is empty at `max_share` or more, i.e. when it
+    is essentially true; a column that is 60% empty is a partial write or a stale stage, and
+    it gets its own message naming the measured share instead of a mechanism that is false.
+    Between `min_empty_share` (default 0.5) and `max_share` the column is named as MOSTLY
+    EMPTY; below `min_empty_share` it is silent, because a column whose modal value is empty
+    on 5% of rows is a distribution, not a defect, and warning on it is how a control gets
+    muted. Both thresholds are calibration knobs: set them from what the mechanism allows,
+    not from the incident that motivated them.
     """
     values = list(values)  # any iterable; a generator has no len() and took the caller down
     n = len(values)
@@ -164,8 +176,14 @@ def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 
     top, count = collections.Counter(values).most_common(1)[0]
     share = count / n
     if top == "" or top is None:
-        return (f"{name}: UNPOPULATED - {share:.4f} of {n} rows are empty. Nothing wrote this "
-                f"column; that is a pipeline fault, not a distribution.")
+        if share >= max_share:
+            return (f"{name}: UNPOPULATED - {share:.4f} of {n} rows are empty. Nothing wrote "
+                    f"this column; that is a pipeline fault, not a distribution.")
+        if share >= min_empty_share:
+            return (f"{name}: MOSTLY EMPTY - the modal value is empty at {share:.4f} of {n} "
+                    f"rows. A minority of the column is populated; that is a partial write or "
+                    f"a stale stage, not a distribution.")
+        return None
     if multi_valued and share >= max_share:
         return (f"{name}: DEGENERATE - one value ({top!r}) is {share:.6f} of {n} rows. "
                 f"Two candidate causes: a narrow batch slice, or a field-name drift forcing a "
@@ -217,6 +235,11 @@ def _validated(names) -> list:
     return sorted(names)
 
 
+# A column ABSENT from a row must not render as a column present with an empty value. NUL is
+# reserved space (see `_esc`), so this tag cannot be produced by any input value.
+_ABSENT = "\x00absent"
+
+
 def _cell(v) -> str:
     if v is None:
         s = ""
@@ -255,6 +278,15 @@ def canonical_hash(rows, columns=None) -> str:
     This is how "the data did not move" stops being a claim and becomes a check. Hash the
     canonical form, store the digest, re-hash around any repair or rebuild. Rows are
     sorted, columns are sorted, floats are quantised.
+
+    AN ABSENT COLUMN IS NOT AN EMPTY ONE. When `columns=` is given, a column missing from a
+    row renders as the `_ABSENT` sentinel, not as the empty cell - so a row that never
+    carried the field cannot hash the same as a row that carries it empty. Before this was
+    named, `r.get(c)` made those two cases identical on the very write path this library
+    exists to protect, which is this module failing its own `.get(key, default)` test. The
+    sentinel is NUL-tagged, and `_esc` guarantees no real value can contain a raw NUL, so it
+    cannot be forged by input. With `columns=None` the row's own keys are used, every column
+    is present by construction, and digests are unchanged.
     """
     cols = None if columns is None else _validated(columns)
     lines = []
@@ -267,7 +299,8 @@ def canonical_hash(rows, columns=None) -> str:
                 "row has no columns: it would digest to the empty digest, which is "
                 "indistinguishable from no rows at all"
             )
-        lines.append("\x1f".join(f"{_key(str(c))}={_cell(r.get(c))}" for c in use))
+        lines.append("\x1f".join(
+            f"{_key(str(c))}={_cell(r[c]) if c in r else _ABSENT}" for c in use))
     lines.sort()
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
