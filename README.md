@@ -169,3 +169,10 @@ test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 docs/             the incident this came from
 ```
+
+## License and visibility
+
+Private, deliberately. The thing this repo is missing is not a feature — it is a defect caught in
+the wild, and until that exists the honest state is "unproven in production". MIT as soon as it has
+one, so the first outside reader can check the claim instead of taking it. Cost of the whole thing
+today: zero dependencies, zero cloud, one nightly run on a host that was already up.
