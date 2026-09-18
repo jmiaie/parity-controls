@@ -260,6 +260,13 @@ def canonical_hash(rows, columns=None) -> str:
     lines = []
     for r in rows:
         use = cols if cols is not None else _validated(r.keys())
+        if not use:
+            # A row that carries no columns would join to "" and land on the empty digest,
+            # making "one column-less row" indistinguishable from "no rows at all".
+            raise ParityViolation(
+                "row has no columns: it would digest to the empty digest, which is "
+                "indistinguishable from no rows at all"
+            )
         lines.append("\x1f".join(f"{_key(str(c))}={_cell(r.get(c))}" for c in use))
     lines.sort()
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()

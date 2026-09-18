@@ -6,6 +6,7 @@ Run: python3 test_parity.py     (stdlib only, no pytest, no fixtures)
 """
 from __future__ import annotations
 
+import hashlib
 import random
 import sys
 from decimal import Decimal
@@ -294,6 +295,19 @@ check("the designed equivalences still hold (so the exclusion above is not a lie
       (canonical_hash([{"a": 1e-7}]) == canonical_hash([{"a": 2e-7}]),
        canonical_hash([{"a": None}]) == canonical_hash([{"a": ""}]),
        canonical_hash([{"a": 1}]) == canonical_hash([{"a": 1.0}])) == (True, True, True), want=True)
+
+print("\n9. a row that carries no columns is refused, not folded into the empty digest")
+_bare = "<no refusal>"
+try:
+    canonical_hash([{}])
+except ParityViolation as exc:
+    _bare = str(exc)
+check("column-less row refused, naming the mechanism",
+      ("no columns" in _bare, "empty digest" in _bare), want=(True, True))
+check("an explicit empty column set over real rows is refused too",
+      fires(lambda: canonical_hash([{"a": 1}], columns=[])), want=True)
+check("not a regression test - an empty ROW SET stays legitimate (guard is not refuse-everything)",
+      canonical_hash([]), want=hashlib.sha256(b"").hexdigest())
 
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)

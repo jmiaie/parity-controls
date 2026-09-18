@@ -119,6 +119,7 @@ Named on the controls themselves, so a reader meets them here rather than in pro
   `UnicodeEncodeError` on both the old and the new revision.
 - The adapter logs the digest and nothing re-checks it later. `verify_canonical` is the tool for that
   and the live adapter does not call it, so the logged digest is evidence for a human, not a control.
+- A row that carries **no columns** is refused by name: it would join to `""` and land on the empty digest, which is indistinguishable from "no rows at all" (`canonical_hash([])` is the empty-input digest `e3b0c442...b855`, deliberately, so an empty row set stays distinguishable from a row that vanished).
 - The write boundary passes on empty: `0` vs `0`, and `[]` vs `[]`. It cannot tell "nothing was
   offered" from "a dead fetcher offered nothing", and it is not made to raise — a legitimately quiet
   night would then alarm, which is how controls get muted. The caller owns that distinction; the live

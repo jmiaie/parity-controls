@@ -11,7 +11,8 @@ is checkable instead of trusted, and so the next reviewer does not have to find 
     python3 tools/audit_tests.py 2b08a2b --module parity.py --tests test_parity.py
 
 Exit 0 when every check either fails on the old module or is labelled a pin; exit 1 when a check
-passes on both revisions, which means it detects nothing.
+passes on both revisions (it detects nothing), and exit 1 when a check could not be evaluated at all
+(the old module aborting the suite is NOT an all-clear - an unevaluated check is not a passing one).
 
 Pins are exempt on purpose: a check whose name contains "ceiling pin" or "not a regression test"
 asserts a documented equivalence or a stability property, and both revisions should agree on it.
@@ -79,7 +80,7 @@ def main() -> int:
     print(f"{a.rev}: {old_pass} pass / {old_fail} fail   |   HEAD: {new_out.count('[PASS]')} pass / {new_out.count('[FAIL]')} fail")
     print(f"checks added since {a.rev}: {len(added)}\n")
 
-    dead = []
+    dead, unreached = [], []
     for name in added:
         a_old, a_new = status(old_out, name), status(new_out, name)
         pin = any(k in name for k in PINS)
@@ -91,14 +92,25 @@ def main() -> int:
                 flag = "  TAUTOLOGY: detects nothing"
                 dead.append(name)
         elif a_old != "FAIL" and not pin:
-            flag = f"  undetermined ({a_old} on the old module)"
+            flag = f"  UNDETERMINED ({a_old} on the old module)"
+            unreached.append(name)
         print(f"  old={a_old:11s} new={a_new:11s} {name[:92]}{flag}")
+
+    if unreached:
+        print()
+        print(f"{len(unreached)} check(s) could not be evaluated against {a.rev}. If the suite ABORTS")
+        print("on the old module (it usually does: the old module breaks checks written for the fix),")
+        print("everything after the abort reads as 'not reached' - which is not evidence of anything.")
+        print("Pin the refusal in isolation (expect the exception, assert the message) or audit those")
+        print("by hand. Do not read this run as 'nothing decorative'.")
 
     print()
     if dead:
         print(f"{len(dead)} check(s) pass with the defect present and must be rewritten:")
         for n in dead:
             print(f"  - {n}")
+        return 1
+    if unreached:
         return 1
     print("every check either fails on the old module or is labelled a pin: nothing decorative")
     return 0
