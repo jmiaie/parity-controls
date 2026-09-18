@@ -40,20 +40,54 @@ class ParityViolation(AssertionError):
     """Raised when a control fires. An AssertionError so plain tooling treats it as failure."""
 
 
-def offered_present_parity(offered: int, present: int, *, where: str = "write boundary",
-                           key: str | None = None) -> bool:
+def offered_present_parity(offered, present, *, where: str = "write boundary",
+                           key: str | None = None, sample: int = 3) -> bool:
     """The write boundary. Fires on field collapse, field rename, truncation AND duplication.
 
-    offered = rows the source handed you. present = rows the table holds afterwards.
-    The two numbers come from different places, which is exactly why this check can
-    disagree with itself and a key-count check cannot. It costs one integer comparison,
-    so there is no batch too small to run it on.
+    Pass COUNTS (rows the source handed you, rows the table holds afterwards). The two
+    numbers come from different places, which is exactly why this check can disagree with
+    itself and a key-count check cannot. It costs one integer comparison, so there is no
+    batch too small to run it on.
+
+    Pass KEY COLLECTIONS instead and it compares key SETS - the only form that catches a
+    count-preserving substitution, where N rows go in, N rows land, and one key was
+    swapped on the way. Equal counts are not equal content.
+
+    CALL THIS WHEN THE WRITE FAILS, NOT ONLY WHEN IT SUCCEEDS. A worker that dies between
+    its DELETE and its INSERT leaves offered=N, present=0, and a check wired only to the
+    success path reports nothing at all:
+
+        try: write(batch)
+        finally: offered_present_parity(offered_keys, present_keys())
+
+    Three blind spots, named here rather than discovered by a customer:
+
+      * `offered` must come from the RAW payload, before any field-name mapping. Derive it
+        with the same mapper that the writer uses and the defect is baked into both sides,
+        so the comparison passes trivially - the bug erases its own evidence.
+      * Excluding rows from the check deletes the check for exactly the rows that failed.
+        A partial or short-fetch batch still gets asserted, with the known delta expected.
+      * Set comparison catches a substitution but not two compensating substitutions.
+        Hash the canonical form (see canonical_hash) when that matters.
     """
-    if offered != present:
+    if isinstance(offered, int) and isinstance(present, int):
+        if offered != present:
+            raise ParityViolation(
+                f"{where}: offered={offered} present={present} delta={present - offered:+d}"
+                + (f" key={key}" if key else "")
+                + ". A keyed write that collides silently looks exactly like a successful one."
+            )
+        return True
+
+    o, p = set(offered), set(present)
+    if o != p:
+        missing, extra = sorted(o - p, key=repr), sorted(p - o, key=repr)
         raise ParityViolation(
-            f"{where}: offered={offered} present={present} delta={present - offered:+d}"
+            f"{where}: offered={len(o)} present={len(p)} keys"
             + (f" key={key}" if key else "")
-            + ". A keyed write that collides silently looks exactly like a successful one."
+            + f"; {len(missing)} never landed {missing[:sample]}, "
+            f"{len(extra)} arrived unwanted {extra[:sample]}. Equal counts with a different "
+            f"key set is a substitution, not a load."
         )
     return True
 

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import sys
 
-from faults import (COLLAPSE, DUPLICATE, HEALTHY, RENAME, TRUNCATE, load, source_rows)
+from faults import (COLLAPSE, DUPLICATE, HEALTHY, RENAME, SHORT_WRITE, TRUNCATE, load,
+                    present_keys, source_rows, substitute_key)
 from parity import (ParityViolation, canonical_hash, cross_field, offered_present_parity,
                     share_anomaly, verify_canonical)
 
@@ -36,11 +37,26 @@ print(f"source rows: {len(ROWS)}\n")
 
 print("1. write boundary - offered vs present")
 for fault, want in ((HEALTHY, False), (COLLAPSE, True), (RENAME, True), (DUPLICATE, True),
-                    (TRUNCATE, True)):
+                    (TRUNCATE, True), (SHORT_WRITE, True)):
     L = load(ROWS, fault)
     check(f"{fault}: parity fires",
           fires(lambda: offered_present_parity(len(ROWS), L.present, key="(wallet,slug,oi)")),
           want)
+
+print("\n1b. key SETS - the count-only form was blind to a substitution")
+# Found by review, not by me: N rows in, N rows land, one key swapped on the way. The
+# count-only boundary says fine. This is the assertion that failed before the fix.
+KEYS = present_keys(ROWS)
+SUB = substitute_key(KEYS)
+check("the counts really are equal (so counting cannot see it)",
+      len(SUB) == len(KEYS), True)
+check("count-only form: SILENT on a substitution  <- the bug",
+      fires(lambda: offered_present_parity(len(KEYS), len(SUB))), False)
+check("key-set form: FIRES", fires(lambda: offered_present_parity(KEYS, SUB)), True)
+check("key-set form: silent when the keys match",
+      fires(lambda: offered_present_parity(KEYS, present_keys(ROWS))), False)
+check("key-set form: fires when the write died before the INSERT",
+      fires(lambda: offered_present_parity(KEYS, present_keys(ROWS, SHORT_WRITE))), True)
 
 print("\n2. the rejected check - rows vs COUNT(DISTINCT key)")
 # A keyed table's row count and its distinct-key count are the same number by

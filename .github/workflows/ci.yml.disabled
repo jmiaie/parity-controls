@@ -1,0 +1,26 @@
+# DISABLED 2026-09-18 - not broken: never executed.
+#
+# The job was created on every push and failed in 2.0s with `runner_id: null`, `steps: []`:
+# GitHub assigned ubuntu-latest and no runner ever picked it up. That is the signature of no
+# available Actions minutes for private repos on this account (the same finding as the earlier
+# dead private-repo CI). The workflow itself parses and both steps pass locally, rc=0.
+#
+# Disabled rather than left red on purpose: a check that fails on every commit teaches its
+# owner to ignore red, which is worse than no check. Re-enable with
+#   git mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml
+# once minutes exist, the repo is public, or a self-hosted runner is registered. Until then
+# the gate runs where it can actually protect money: in the pipeline's own nightly run.
+name: ci
+on: [push, pull_request]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: fault matrix - every control must fire on its fault
+        run: python3 test_parity.py
+      - name: demo - the failure in dollars
+        run: python3 demo.py

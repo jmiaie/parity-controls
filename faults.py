@@ -1,6 +1,6 @@
 """Fault injection. A control is not installed until a fault has made it fire.
 
-Five scenarios, and the first one is the one that matters:
+Seven scenarios, and the first one is the one that matters:
 
   HEALTHY     nothing is wrong            -> every control must stay SILENT
   COLLAPSE    the reader used the wrong field name (snake_case) on a camelCase API,
@@ -9,17 +9,21 @@ Five scenarios, and the first one is the one that matters:
   RENAME      the field is gone entirely, so even the camelCase fallback misses
   DUPLICATE   the write has no key and the batch lands twice - the mirror of collapse
   TRUNCATE    a page never lands
+  SUBSTITUTE  N rows in, N rows land, one key swapped on the way (count-preserving)
+  SHORT_WRITE the worker died between its DELETE and its INSERT: offered N, present 0
 
 HEALTHY gets skipped in real reviews, and a control that is silent on a fault AND
 never exercised on healthy data has not been tested - it has merely never spoken.
+SUBSTITUTE and SHORT_WRITE exist because a reviewer named them as gaps; the count-only
+write-boundary form passed both.
 """
 from __future__ import annotations
 
 import random
 from collections import namedtuple
 
-HEALTHY, COLLAPSE, RENAME, DUPLICATE, TRUNCATE = (
-    "HEALTHY", "COLLAPSE", "RENAME", "DUPLICATE", "TRUNCATE")
+HEALTHY, COLLAPSE, RENAME, DUPLICATE, TRUNCATE, SUBSTITUTE, SHORT_WRITE = (
+    "HEALTHY", "COLLAPSE", "RENAME", "DUPLICATE", "TRUNCATE", "SUBSTITUTE", "SHORT_WRITE")
 
 Loaded = namedtuple("Loaded", "rows present distinct_keys")
 
@@ -65,6 +69,8 @@ def keyed_write(rows, fault=HEALTHY):
 
 def load(rows, fault=HEALTHY) -> Loaded:
     """Load a batch and report what a loader would report: rows, present, distinct keys."""
+    if fault == SHORT_WRITE:
+        return Loaded([], 0, 0)  # died between the DELETE and the INSERT: nothing is there
     base = rows[: len(rows) // 2] if fault == TRUNCATE else list(rows)
     table = keyed_write(base, HEALTHY if fault == DUPLICATE else fault)
     if fault == DUPLICATE:
@@ -74,6 +80,22 @@ def load(rows, fault=HEALTHY) -> Loaded:
 
 
 PRICE = {0: 0.62, 1: 0.38}  # a mark per outcome index: this is where a collapse costs money
+
+
+def present_keys(rows, fault=HEALTHY):
+    """The key set the table ends up holding - what a verify pass would SELECT back."""
+    if fault == SHORT_WRITE:
+        return []  # died between the DELETE and the INSERT: everything in flight is gone
+    return list(keyed_write(rows, fault).keys())
+
+
+def substitute_key(keys):
+    """Count-preserving corruption: one distinct key dropped, one stranger added.
+
+    The counts agree, the loader reports success, and a row is wrong. Only a key-SET
+    comparison sees it - the count-only write boundary passed this fault.
+    """
+    return list(keys[:-1]) + [("0x" + "de" * 20, "market-ghost", 0)]
 
 
 def nav(rows) -> float:

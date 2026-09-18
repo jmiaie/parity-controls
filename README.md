@@ -4,9 +4,9 @@
 required to prove itself against a fault it must catch — because a control that has never
 been observed to fail is not a control.
 
-A field-name typo read with a default silently collapsed **2,673,913 rows** of dimensional
-data on a live pipeline. No exception, no log line, no failed run. The position book was
-wrong, and every dashboard was green. Case study: [`docs/INCIDENT-0047.md`](docs/INCIDENT-0047.md).
+A field-name typo read with a default silently collapsed **2.67M rows** of dimensional data on a
+live pipeline (stored count 4,744,661, and 7,418,574 once repaired). No exception, no log line,
+no failed run. The position book was wrong, and every dashboard was green. Case study: [`docs/INCIDENT-0047.md`](docs/INCIDENT-0047.md).
 
 ## Run it
 
@@ -15,7 +15,7 @@ python3 test_parity.py   # the fault matrix: every control must fire on its faul
 python3 demo.py          # the money: 97 rows vanish and the book is off by 22.7%
 ```
 
-No dependencies. Python 3.10+. 356 lines total.
+No dependencies. Python 3.10+. Four files, all short enough to read in one sitting.
 
 ## What the demo prints
 
@@ -53,15 +53,30 @@ never wrote. And a freeze digest for the file, so next run can prove whether it 
 
 | # | control | catches | cost |
 |---|---|---|---|
-| 1 | `offered_present_parity` | field collapse, field rename, truncation, duplication | one integer compare |
+| 1 | `offered_present_parity` | collapse, rename, truncation, duplication, count-preserving substitution, a write that died before its INSERT | one compare — or one set compare |
 | 2 | `cross_field` | a column forced to a default while its sibling still holds the truth | one pass |
 | 3 | `share_anomaly` | a declared multi-valued column gone degenerate, **and** an unpopulated column (different messages) | one pass |
 | 4 | `canonical_hash` | "the data did not move" — around any repair or rebuild | one pass |
 
-1 and 2 are arithmetic. 3 is a heuristic and it says so, including its measured blind spot
-on the function itself: a real orphan family sat at max-share `0.9911` and slipped under a
-`0.999` trigger. Calibrate that threshold from the mechanism — what fraction of rows can
-legitimately share a value — never from the incident that motivated it.
+1 and 2 are arithmetic. 3 is a heuristic and it says so, including its measured blind spot on the
+function itself: in the incident the dominant value sat at share `0.999947` — one value's worth of
+margin under a `0.999` trigger — and the post-fix maximum for the same family is `0.521829`.
+Calibrate that threshold from the mechanism (what fraction of rows can legitimately share a value),
+never from the incident that motivated it.
+
+## Known blind spots
+
+Named on the controls themselves, so a reader meets them here rather than in production:
+
+- `offered` must be computed from the **raw** payload, before any field-name mapping. Derive it
+  with the writer's own mapper and the defect is baked into both sides — the bug erases its own
+  evidence and the comparison passes trivially.
+- A row excluded from a check is a row the check cannot fail on. A "partial" or short-fetch batch
+  gets asserted anyway, with the known shortfall expected as the delta.
+- Key-set comparison catches one substitution, not two compensating replacements. Hash the
+  canonical form when that matters.
+- `share_anomaly` is a heuristic whose threshold must come from the mechanism. It is WARN-only for
+  that reason: it returns a message and never raises.
 
 ## Rejected on purpose
 
@@ -74,9 +89,13 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 22/22 — every control fires on
-collapse, rename, truncation and duplication, and the healthy control leaves all of them
-silent; the demo's 22.7% book error; order-independence and float-stability of the hash.
+**Proven** (reproduce both commands): the fault matrix passes 27/27 — every control fires on
+collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
+before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
+order-independence and float-stability of the hash. Note where the faults came from: collapse,
+rename and duplicate were found by an outside reviewer, and two of the faults are there because the
+review exposed **real defects in this control** — the count-only form passed both a substitution and
+a dead write.
 
 **Not proven:** any load beyond a few hundred rows in one process; no concurrency claim; no
 adapter to a real warehouse; no production deployment yet. This is a v0.1 seed of the idea,
@@ -104,8 +123,9 @@ not something to point at production tonight.
 - **v0.4 — cost module.** Fold the measured LLM capacity/cost model in (`cost/measure.py`),
   so an AI-heavy pipeline reports dollars per thousand rows beside its integrity report.
   *Done = a single command that says what a pipeline costs and whether its writes are sound.*
-- **v0.5 — generalize `faults.py`.** Collapse, rename, truncate, duplicate, reorder, type
-  drift — so CI can prove *any* new control, not just these four.
+- **v0.5 — generalize `faults.py`.** Reorder, type drift and compensating substitutions, so the
+  gate can prove *any* new control rather than just these four. (Collapse, rename, truncate,
+  duplicate, substitution and short writes already ship.)
 - **v1.0 — one real deployment.** Wire the gate into the live surplus-funds pipeline and run
   it nightly for 30 nights. *Done = "30 nights, N real defects caught, zero silent writes",
   with the reports to prove it.*
