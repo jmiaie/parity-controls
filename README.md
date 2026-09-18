@@ -127,9 +127,20 @@ surplus-funds pipeline. `write_csv_gated()` replaced the bare CSV write on 2026-
   refuses a silent collapse, a count-preserving substitution, a partial write, and its own absent
   dependency — and leaves the prior file byte-identical in each of those cases.
 
-Nightly at 05:00 via `/srv/pipeline/scripts/surplus-gate-nightly.sh`. stdout is one line — lead count,
-per-stage drop counts, counties produced/offered, and the freeze digest — delivered whether or not
-it is interesting, because a silent night must not look like a night the check never ran.
+Nightly at 05:00 via `adapters/surplus-gate-nightly.sh` — the same file, host paths and all, that
+cron actually runs, so the wiring can be read rather than taken on faith. stdout is one line: lead
+count, per-stage drop counts, sources parsed per source offered, and the freeze digest, delivered
+whether or not it is interesting, because a silent night must not look like a night the check never
+ran. On a refusal it prints `GATE FAILED rc=N: <reason>` read from that night's stderr, because an
+alert that says only "exited 2" is a noise generator. First green gated night:
+
+```
+GATE OK 2026-09-18 | 61 leads | 6/6 sources parsed | parsed 5003 | dedupe -1692 | filter $150,000 -3250 | no-apn 7 | digest f11f7f9da5512f0c
+```
+
+Live county fetches, 607s, six sources offered and six parsed. The night before it refused — and that
+refusal was a false alarm of the gate's own making, which is the more useful entry in the record: see
+`docs/` and the parse-boundary comment in the adapter's target.
 
 ## Where this is meant to be used
 
@@ -168,6 +179,7 @@ faults.py         fault injectors + the toy position book that prices a collapse
 test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 docs/             the incident this came from
+adapters/         the nightly wrapper as installed, and where it is wired
 ```
 
 ## License and visibility
