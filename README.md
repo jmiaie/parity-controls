@@ -102,9 +102,34 @@ the point: collapse, rename and duplicate were found by an outside reviewer, and
 here because review exposed real defects in this control — the count-only form passed a substitution,
 passed a dead write, and **false-fired on healthy data** when a page repeated a key.
 
-**Not proven:** any load beyond a few hundred rows in one process; no concurrency claim; no
-adapter to a real warehouse; no production deployment yet. This is a v0.1 seed of the idea,
-not something to point at production tonight.
+**Not proven:** load beyond a couple of thousand rows per run in one process; no concurrency
+claim (the live adapter is single-writer and says so in the code); no warehouse adapter; one
+live nightly job on one host, and its record is nights old, not 30. This is a v0.2 seed of the
+idea, not something to point at production.
+
+## Where this is armed (not just intended)
+
+`jmiaie/claude`, branch `feat/madera-pdf-source`, `ca_surplus_funds.py` — the live CA
+surplus-funds pipeline. `write_csv_gated()` replaced the bare CSV write on 2026-09-18:
+
+- **Before writing:** a source that handed us rows and produced zero leads aborts the run. Not a
+  filter — a renamed column or a dead parser, which erases a whole county's listing while the run
+  still reports success. That is INCIDENT-0047's shape, and it is the reason this boundary was
+  worth arming first.
+- **After writing:** the rows go to a scratch path, come back **off disk**, and their key set is
+  compared with what was offered; only then does `os.replace()` put them at the real path. A
+  violation therefore cannot overwrite the previous night's data, and the bad file is kept as
+  evidence.
+- **Missing dependency = no write.** If `parity` is not importable the run refuses, loudly.
+  A corrupt lead list is worse than a missing one, and the nightly digest is how those two stop
+  looking identical from the outside.
+- **The adapter's own fault matrix, 14/14** (`tests/test_write_gate.py`, in the repo it guards):
+  refuses a silent collapse, a count-preserving substitution, a partial write, and its own absent
+  dependency — and leaves the prior file byte-identical in each of those cases.
+
+Nightly at 05:00 via `/srv/pipeline/scripts/surplus-gate-nightly.sh`. stdout is one line — lead count,
+per-stage drop counts, counties produced/offered, and the freeze digest — delivered whether or not
+it is interesting, because a silent night must not look like a night the check never ran.
 
 ## Where this is meant to be used
 
@@ -120,20 +145,15 @@ not something to point at production tonight.
 
 ## Roadmap
 
-- **v0.2 — adapters.** SQLite and CSV/SQL parser so `offered_present_parity` runs at a real
-  load boundary; a checkpoint sidecar that persists canonical digests. *Done = the gate runs
-  on a real pipeline nightly and its digest is published in the run log.*
-- **v0.3 — `parity scan <table>`.** All four controls over any CSV/SQLite, JSON report. The
-  honest version of a "data quality score": counts, samples, and named mechanisms.
-- **v0.4 — cost module.** Fold the measured LLM capacity/cost model in (`cost/measure.py`),
-  so an AI-heavy pipeline reports dollars per thousand rows beside its integrity report.
-  *Done = a single command that says what a pipeline costs and whether its writes are sound.*
-- **v0.5 — generalize `faults.py`.** Reorder, type drift and compensating substitutions, so the
-  gate can prove *any* new control rather than just these four. (Collapse, rename, truncate,
-  duplicate, substitution and short writes already ship.)
-- **v1.0 — one real deployment.** Wire the gate into the live surplus-funds pipeline and run
-  it nightly for 30 nights. *Done = "30 nights, N real defects caught, zero silent writes",
-  with the reports to prove it.*
+- **v0.2 — adapters. DONE 2026-09-18.** The gate runs at a real load boundary, nightly, on a live
+  pipeline, and its digest lands in the run log. See *Where this is armed* above.
+- **v0.3–v0.5 — cut on purpose.** (`parity scan <table>`, the cost module, generalized fault
+  injection.) Not wrong, just not the bottleneck. More controls do not produce the missing
+  evidence, and the missing evidence is **a real defect caught in the wild**. Notes kept, nothing
+  built — a control nobody has needed yet is a liability with a maintenance cost.
+- **v1.0 — one real deployment, 30 nights.** Clock started 2026-09-18. *Done = "30 nights, N real
+  defects caught, zero silent writes", with the reports to prove it.* Night 1 of 30, and the
+  reports are the per-night JSON the gate drops beside the leads file.
 - **v1.1 — prove the ALARM, not just the check.** Every control here is proven to *raise*; nothing
   proves the alert reaches a human. Inject one synthetic bad row into a shadow table nightly, assert
   the alert actually arrives, then remove it. Until that exists, a silenced notifier and a healthy
