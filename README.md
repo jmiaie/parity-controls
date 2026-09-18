@@ -33,6 +33,22 @@ error carried to the book          -6,836.05   (-22.7%)
   cross-field index<->label: FIRED - 123 rows contradict their declared domain
 ```
 
+## First real run (390 real rows, 44 columns, in-house leads pipeline)
+
+```
+canonical_hash (freeze digest): 0e14d492cb2b0795fd79d0f2583da41724f438cf4bf525962753d6398c85aeab
+classified: {'ok': 19, 'UNPOPULATED': 19, 'DEGENERATE': 6}   -> 25 of 44 columns warn
+```
+
+The split is the point. A cardinality rule alone calls all 25 of those a violation, and 19
+of them are just columns nothing ever wrote — on a healthy file (measured: 18 of 44 columns
+on the first pass, 25 with a stricter N floor). Noisy warnings are how real ones get ignored,
+so `share_anomaly` names the two defects separately and the operator only investigates 6.
+
+The run also surfaced a real business finding: `owner_name`, `owner_mail_address` and 8 other
+enrichment columns are **100% empty** in that file — either a stale artifact or a stage that
+never wrote. And a freeze digest for the file, so next run can prove whether it moved.
+
 ## The four controls, in the order they earn their place
 
 | # | control | catches | cost |
