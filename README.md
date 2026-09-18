@@ -116,7 +116,7 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 48/48 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes 52/52 — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
 order-independence and float-stability of the hash. Note where the faults came from, because it is
@@ -142,6 +142,17 @@ contradicts "WARN-only, never raises"; and it raised `TypeError` on a generator,
 `len()` on the caller's iterable. Two probes, seven defects total, all of them of the same family:
 **a control that fails open, or a document that overclaims.** Both are the failure this repo exists
 to name.
+
+The encoding claim itself is fuzzed rather than asserted: `test_parity.py` now builds 2,000 random
+rows out of the characters that break encoders (`=`, the separator, a newline, a NUL, a backslash),
+plus `nan`/`inf` and the six-decimal boundary, and requires 2,000 distinct digests — then requires
+that 2,000 single-cell changes and 1,000 added keys each move the digest. Seeded, so it is the same
+2,000 rows every run, and it costs 0.14s. It excludes the equivalences this README already names as
+designed (a value and its own text spelling; `1e-7` and `2e-7` both print `0.000000`) and separately
+checks that those still behave as documented — a fuzzer that does not make that separation reports
+noise, and the first pass of this one reported 34 hits, every one of them a ceiling already written
+down here. What it does not do is prove injectivity: the alphabet is mine, so it bounds the class the
+test can see. Read the line as "no collision in 2,000 random rows", not "injective".
 
 **Measured, one process, one core** — `python3 bench.py` reproduces it, on 2026-09-18 hardware, and
 these are that run's numbers rather than a best-of:

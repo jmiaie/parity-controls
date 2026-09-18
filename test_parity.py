@@ -6,6 +6,7 @@ Run: python3 test_parity.py     (stdlib only, no pytest, no fixtures)
 """
 from __future__ import annotations
 
+import random
 import sys
 
 from faults import (COLLAPSE, DUPLICATE, HEALTHY, RENAME, SHORT_WRITE, TRUNCATE, load,
@@ -181,6 +182,58 @@ print("\n1h. WARN-only means it does not raise")
 check("empty column with min_n=0 returns nothing", share_anomaly([], name="col", min_n=0), want=None)
 check("a generator is accepted (no len() on the caller's side)",
       share_anomaly((v for v in range(1200)), name="col"), want=None)
+
+print("\n1i. injectivity, over random input rather than the cases above")
+
+# A bounded, seeded fuzz. The alphabet deliberately excludes the README's designed equivalences (a
+# value and its own text spelling; 1e-7 and 2e-7 both print 0.000000; an integral float prints as
+# an integer) - a fuzzer that does not separate "as designed" from "collision" reports noise, and
+# the first pass of this one did exactly that: 34 hits, every one a documented ceiling.
+# What it cannot do is prove completeness: the alphabet is mine, so this bounds the class the test
+# can see. The README says "no collision found over 2000 random rows", not "injective, proved".
+_FUZZ_KEYS = ["a", "b", "c", "a=x", "a=b", "a\x1f", "a\\", "a\x00", "a\n", "a\r", "=", "x=y"]
+_FUZZ_VALS = ["x", "y", "x=y", "nan", "inf", "-inf", "\x1f", "\n", "\r", "\\", "\x00",
+              1.5, -1.5, 3.25, float("nan"), float("inf"), float("-inf"), None, True, 7]
+_r = random.Random(20260918)
+
+
+def _rand_row(n=None):
+    return {_r.choice(_FUZZ_KEYS): _r.choice(_FUZZ_VALS) for _ in range(n or _r.randint(1, 4))}
+
+
+_pool, _seen = [], set()
+while len(_pool) < 2000:
+    _d = _rand_row()
+    _k = tuple(sorted((a, repr(b)) for a, b in _d.items()))
+    if _k in _seen:
+        continue
+    _seen.add(_k)
+    _pool.append(_d)
+
+_byhash = {}
+for _d in _pool:
+    _byhash.setdefault(canonical_hash([_d]), _d)
+check("2000 random distinct rows -> 2000 distinct digests, no collision", len(_byhash), want=2000)
+
+_stuck = 0
+for _d in _pool:
+    _k = _r.choice(list(_d))
+    _cands = [v for v in _FUZZ_VALS if repr(v) != repr(_d[_k])]
+    if _cands and canonical_hash([_d]) == canonical_hash([{**_d, _k: _r.choice(_cands)}]):
+        _stuck += 1
+check("2000 single-cell changes, none of them invisible", _stuck, want=0)
+
+_same = 0
+for _d in _pool[:1000]:
+    _fresh = next(k for k in _FUZZ_KEYS if k not in _d)
+    if canonical_hash([_d]) == canonical_hash([{**_d, _fresh: _r.choice(_FUZZ_VALS)}]):
+        _same += 1
+check("1000 rows with a key added, none hashing like the original", _same, want=0)
+
+check("the designed equivalences still hold (so the exclusion above is not a lie)",
+      (canonical_hash([{"a": 1e-7}]) == canonical_hash([{"a": 2e-7}]),
+       canonical_hash([{"a": None}]) == canonical_hash([{"a": ""}]),
+       canonical_hash([{"a": 1}]) == canonical_hash([{"a": 1.0}])) == (True, True, True), want=True)
 
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)
