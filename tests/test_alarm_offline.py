@@ -241,14 +241,12 @@ def main() -> int:
           cp.stdout.strip().splitlines()[0] if cp.stdout.strip() else "no stdout")
     print()
 
-    print("NOTE - the real wrapper, run as-is against the live working copy:")
-    cp = run(["bash", str(WRAPPER), "--offline"])
-    show("bash /srv/pipeline/scripts/surplus-gate-nightly.sh --offline", cp)
-    print("      -> rc=1 FileNotFoundError, i.e. the gate is never reached: the fixture is")
-    print(f"         missing from {REPO}/sample_data/. Restoring that one tracked file")
-    print("         (`git checkout sample_data/sample_leads.csv` in the live tree) makes the")
-    print("         real wrapper run --offline verbatim. Not done here: uploads/main is off-limits.")
-    print()
+    # The LIVE wrapper is deliberately not invoked here any more. Its rc line is appended with
+    # `tee -a` into the production run.log, so a note like this put a bare `rc=1` into the
+    # append-only record it exists to validate - mistaken for a failed nightly twice. The gap it
+    # demonstrated (this deployment has sample_leads.csv one level up from where --offline looks)
+    # is documented in the wrapper itself, with the one-line repair.
+    # A proof must never write to the ledger it audits.
 
     failed = [n for n, ok, _ in results if not ok]
     print(f"=== {len(results) - len(failed)}/{len(results)} checks PASS ===")
