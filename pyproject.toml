@@ -29,10 +29,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/jmiaie/parity"
-Repository = "https://github.com/jmiaie/parity"
-Issues = "https://github.com/jmiaie/parity/issues"
-Changelog = "https://github.com/jmiaie/parity/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/jmiaie/parity-controls"
+Repository = "https://github.com/jmiaie/parity-controls"
+Issues = "https://github.com/jmiaie/parity-controls/issues"
+Changelog = "https://github.com/jmiaie/parity-controls/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # The library itself stays zero-dependency: `dependencies = []` above is a claim the

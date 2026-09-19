@@ -1,5 +1,7 @@
 # parity
 
+[![ci](https://github.com/jmiaie/parity-controls/actions/workflows/ci.yml/badge.svg)](https://github.com/jmiaie/parity-controls/actions/workflows/ci.yml)
+
 **Write-boundary integrity for financial data and AI pipelines.** Four controls, each one
 required to prove itself against a fault it must catch — because a control that has never
 been observed to fail is not a control.
