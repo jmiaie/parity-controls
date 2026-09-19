@@ -39,7 +39,7 @@ Changelog = "https://github.com/jmiaie/parity-controls/blob/main/CHANGELOG.md"
 # README makes and the install path has to keep. These extras are for contributors only -
 # nothing in parity.py imports pytest or ruff.
 dev = [
-    "pytest>=7",
+    "pytest>=9.1.1",
     "ruff>=0.6",
 ]
 
