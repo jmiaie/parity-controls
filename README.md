@@ -1,5 +1,8 @@
 # parity
 
+> **Status (2026-09-30):** public companion to private `parity`. See [`STATUS.md`](STATUS.md) + [`docs/POSITIONING.md`](docs/POSITIONING.md).
+
+
 [![ci](https://github.com/jmiaie/parity-controls/actions/workflows/ci.yml/badge.svg)](https://github.com/jmiaie/parity-controls/actions/workflows/ci.yml)
 
 **Write-boundary integrity for financial data and AI pipelines.** Four controls, each one
