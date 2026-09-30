@@ -75,11 +75,13 @@ never wrote. And a freeze digest for the file, so next run can prove whether it 
 | 3 | `share_anomaly` | a declared multi-valued column gone degenerate, **and** an unpopulated column (different messages) | one pass |
 | 4 | `canonical_hash` | "the data did not move" — around any repair or rebuild | one pass |
 
-1 and 2 are arithmetic. 3 is a heuristic and it says so, including its measured blind spot on the
-function itself: in the incident the dominant value sat at share `0.999947` — one value's worth of
-margin under a `0.999` trigger — and the post-fix maximum for the same family is `0.521829`.
-Calibrate that threshold from the mechanism (what fraction of rows can legitimately share a value),
-never from the incident that motivated it.
+1 and 2 are arithmetic. 3 is a heuristic and it says so, including the measured numbers on the
+function itself: in the incident the dominant value sat at share `0.999947` (= 1 − 249/4,744,661),
+**above** this `0.999` trigger by 249 rows' worth — so the control fires on the incident's shape —
+and the post-fix maximum for the same family is `0.521829`. Its real blind spot is a collapse that
+splits its mass across two values, or any share under the trigger. Calibrate the threshold from the
+mechanism (what fraction of rows can legitimately share a value), never from the incident that
+motivated it.
 
 ## Known blind spots
 
