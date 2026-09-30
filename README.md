@@ -16,7 +16,8 @@ no failed run. The position book was wrong, and every dashboard was green. Case 
 python3 test_parity.py               # the fault matrix: every control fires on its fault, silent when healthy
 python3 -m pytest -q                 # the same assertions, collectable (needs the dev extra: pip install -e '.[dev]')
 python3 examples/quickstart.py       # the four controls on a small dataset, healthy and broken
-demo.py                              # the money: 97 rows vanish and the book is off by 22.7%
+python3 examples/csv_position_book_gate.py  # CSV position-book write gate: refuse drift, freeze digest
+python3 demo.py                      # the money: 97 rows vanish and the book is off by 22.7%
 python3 bench.py                     # the load: a million rows, so the numbers above can be argued with
 pip install -e .                     # optional; the controls import as `parity` either way
 ```
@@ -24,12 +25,10 @@ pip install -e .                     # optional; the controls import as `parity`
 `make check` runs the gate (fault matrix, then the demo). No runtime dependencies. Python 3.10+.
 Short enough to read in one sitting.
 
-> **CI is parked.** `.github/workflows/ci.yml.disabled` never executed on GitHub — the runner was
-> assigned and never picked the job up (`runner_id: null`, `steps: []`), the signature of exhausted
-> Actions minutes on a private repo. It is disabled rather than left red so that red keeps meaning
-> something. Both its steps pass locally. Re-enable with
-> `git mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml` once minutes exist or the repo
-> is public. Until then `make check` is the gate.
+> **CI is live on this public companion.** `.github/workflows/ci.yml` runs the fault matrix and
+> the demo on every push and pull request. The private hardening line (`jmiaie/parity`) still parks
+> Actions when minutes are exhausted; safe fixes export here so the badge stays honest.
+
 
 ## What the demo prints
 
@@ -76,11 +75,13 @@ never wrote. And a freeze digest for the file, so next run can prove whether it 
 | 3 | `share_anomaly` | a declared multi-valued column gone degenerate, **and** an unpopulated column (different messages) | one pass |
 | 4 | `canonical_hash` | "the data did not move" — around any repair or rebuild | one pass |
 
-1 and 2 are arithmetic. 3 is a heuristic and it says so, including its measured blind spot on the
-function itself: in the incident the dominant value sat at share `0.999947` — one value's worth of
-margin under a `0.999` trigger — and the post-fix maximum for the same family is `0.521829`.
-Calibrate that threshold from the mechanism (what fraction of rows can legitimately share a value),
-never from the incident that motivated it.
+1 and 2 are arithmetic. 3 is a heuristic and it says so, including the measured numbers on the
+function itself: in the incident the dominant value sat at share `0.999947` (= 1 − 249/4,744,661),
+**above** this `0.999` trigger by 249 rows' worth — so the control fires on the incident's shape —
+and the post-fix maximum for the same family is `0.521829`. Its real blind spot is a collapse that
+splits its mass across two values, or any share under the trigger. Calibrate the threshold from the
+mechanism (what fraction of rows can legitimately share a value), never from the incident that
+motivated it.
 
 ## Known blind spots
 
@@ -147,7 +148,7 @@ duplicate — the one case a keyed table cannot produce. That negative result is
 
 ## What is proven, and what is not
 
-**Proven** (reproduce both commands): the fault matrix passes 66/66 — every control fires on
+**Proven** (reproduce both commands): the fault matrix passes (**72** checks — run `python3 test_parity.py` and believe the command) — every control fires on
 collapse, rename, truncation, duplication, a count-preserving substitution, and a write that died
 before its INSERT, while the healthy control leaves all of them silent; the demo's 22.7% book error;
 order-independence and float-stability of the hash. Note where the faults came from, because it is
@@ -240,7 +241,7 @@ the obvious caveat on everything above: a check is only worth the module it was 
 these checks passed with the defects present until `tools/audit_tests.py` was pointed at the pre-fix
 revision, so "proven" here means "fails on the pre-fix module and passes now", which is a claim
 you can reproduce rather than a claim you can believe. This
-is a v0.2 seed of the idea, not something to point at production.
+is a v0.3 library of the idea, not something to point at production until a real wild defect is caught.
 
 ## Where this is armed (not just intended)
 
@@ -308,6 +309,7 @@ refusal was a false alarm of the gate's own making, which is the more useful ent
 - **Quant:** position and NAV integrity, point-in-time correctness, and reconciliation —
   "offered vs present" is the ledger-versus-book reconciliation pattern with a cheaper
   implementation. A silent dimensional collapse is a wrong mark, not a missing row.
+  Concrete CSV write-gate shape: [`examples/csv_position_book_gate.py`](examples/csv_position_book_gate.py).
 - **Entrepreneurial finance:** audit evidence. A control report you can hand to an
   accountant or an investor is worth more than a green dashboard, because it shows which
   checks fired and when. Unit economics belong next to correctness: see the roadmap.
@@ -348,6 +350,7 @@ faults.py         fault injectors + the toy position book that prices a collapse
 test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 bench.py          the load measurement the README quotes
+examples/         quickstart + csv_position_book_gate (CSV write-boundary adapter)
 tests/            the alarm proof: an injected collapse, refused, at the real write boundary
 tools/            audit_tests.py - run the suite against the PRE-fix module; a check that passes
                   on both detects nothing, and five of these did until it was pointed at one
@@ -359,22 +362,14 @@ LICENSE           MIT
 
 ## License and visibility
 
-Private, deliberately. The thing this repo is missing is not a feature — it is a defect caught in
-the wild, and until that exists the honest state is "unproven in production". What *is* proven now is
-that the alarm fires when a real write goes wrong — on an injected fault, which is my fault and not
-the world's, so the distinction stays in the sentence. Cost of the whole thing today: zero
-dependencies, zero cloud, one nightly run on a host that was already up.
+**Public companion** of the private hardening line [`jmiaie/parity`](https://github.com/jmiaie/parity).
+Same four controls, MIT licensed, zero runtime dependencies. New adversarial fixes and product docs
+land privately first; this repo is the installable surface with live CI.
 
-Two consequences of that decision, stated rather than left for a reader to discover:
+What this library is still missing is not a feature — it is a defect caught in the wild. Until that
+exists the honest state is "unproven in production". What *is* proven is that the alarm fires when a
+real write goes wrong on an injected fault. Cost today: zero dependencies, zero cloud.
 
-- **Licensed MIT** even though it is private. Visibility and licensing are different decisions: with
-  no `LICENSE` the default is all rights reserved, which is wrong for a portfolio artefact and would
-  force the licensing call at the worst possible moment. Adding it publishes nothing.
-- **CI is parked, and the push path took its job** (`.github/workflows/ci.yml.disabled`). Actions
-  minutes on a private repo for this account are exhausted, and a check that fails on every commit
-  trains its owner to ignore red — so the suite runs where the push happens instead. Any repo's
-  `test_*.py` must pass before `gitpush.sh` will land anything; a deliberate failing check was
-  planted to prove it, and `origin` was confirmed unmoved at the old SHA while the push was refused.
-  Escape hatch for a hotfix: `SKIP_TESTS=1`. Going public returns the badge for free (Actions is
-  unmetered on public repos), which is the one argument for the visibility switch that is not about
-  the reader.
+- **Licensed MIT.** Visibility and licensing are different decisions.
+- **CI is live** (`.github/workflows/ci.yml`). The private sibling parks Actions when minutes are
+  exhausted; export safe fixes here so red still means something.

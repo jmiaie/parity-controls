@@ -38,7 +38,9 @@ from pathlib import Path
 REPO = Path(os.environ.get("PIPELINE_REPO", "/srv/pipeline/repo/main"))
 PIPELINE = Path(os.environ.get("PIPELINE", str(REPO / "ca_surplus_funds.py")))
 WRAPPER = Path(os.environ.get("WRAPPER", "/srv/pipeline/scripts/surplus-gate-nightly.sh"))
-PARITY_DIR = os.environ.get("PARITY_DIR", "/srv/parity")
+# The module under test defaults to THIS checkout, not a hardcoded path: run this from a clone
+# and the clone's parity.py is what gets exercised.
+PARITY_DIR = os.environ.get("PARITY_DIR", str(Path(__file__).resolve().parents[1]))
 FIXTURE_SRC = Path(os.environ.get("FIXTURE", "/tmp/parity-fixture/sample_data/sample_leads.csv"))
 WORK = Path("/tmp/gateproof")
 RUN, OUT, STATE, INJECT = WORK / "run", WORK / "out", WORK / "state", WORK / "inject"

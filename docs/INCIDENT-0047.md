@@ -76,8 +76,9 @@ self-corrects and contributes no orphans. One of two writer paths, then: a write
 repaired as duplication.
 
 The post-fix maximum single-value share for that family is **0.521829** (exact). The pre-fix
-dominant-value share was **0.999947** (= 1 − 249/4,744,661) — one value's worth of margin under a
-`0.999` statistical trigger. The shape is the lesson: a column pinned near-constant is a symptom
+dominant-value share was **0.999947** (= 1 − 249/4,744,661) — one value's worth of margin **over** a
+`0.999` statistical trigger (0.999947 ≥ 0.999, so `share_anomaly` at that default fires on this shape;
+the margin is 249 rows' worth). The shape is the lesson: a column pinned near-constant is a symptom
 worth investigating, and a threshold calibrated on the incident that motivated it would have
 missed it. A figure of `0.9911` appeared in early drafts of this write-up and is **withdrawn** —
 the reviewer who owns the measurement has no measurement that yields it.
@@ -104,7 +105,8 @@ the reviewer who owns the measurement has no measurement that yields it.
 ## Corrections (independent review, same day)
 
 An external review of this document returned seven numbered corrections and four blind spots in
-the write-boundary control. All seven are applied above:
+the write-boundary control. All seven are applied above (an eighth, this repo's own later arithmetic
+re-check, is recorded at the end of the list):
 
 1. Post-fix count restated from 3,813,395 to the live **3,871,226**, with the likely cause of the
    gap (a mid-rebuild read) named rather than hidden.
@@ -118,6 +120,13 @@ the write-boundary control. All seven are applied above:
 7. **Discovery framing corrected**: the two defects were found about 15.5 hours apart, not
    simultaneously. "Two defects, one symptom" is the lesson; "discovered as two" was not what
    happened.
+
+**8 (this repo's own arithmetic re-check, 2026-09-19).** Correction 5 above restated the pre-fix share
+as `0.999947` with "one value's worth of margin **under** a `0.999` trigger". It is **over** the
+trigger: `0.999947 ≥ 0.999`, so a control at that default fires on this shape. The direction was wrong
+in three places — here, the README, and the `share_anomaly` docstring — and is corrected in all three.
+The blind spot that control actually has is a collapse that splits its mass across two values, or a
+share below the trigger.
 
 Two of the four blind spots were **real defects in this repo's own control**, not prose errors: the
 count-only form passed a count-preserving substitution, and nothing armed the check when the write

@@ -147,12 +147,16 @@ def share_anomaly(values, *, name: str, multi_valued: bool = True, min_n: int = 
                   max_share: float = 0.999, min_empty_share: float = 0.5) -> str | None:
     """WARN-only: returns a message, never raises. Distinct defects, distinct messages.
 
-    MEASURED BLIND SPOT, documented rather than discovered later: in the incident the
-    dominant value sat at share 0.999947 - one value's worth of margin under a 0.999
-    trigger - and the post-fix maximum for the same family is 0.521829. Calibrate this
-    threshold from the mechanism - what fraction of rows can legitimately share a value -
-    never from the incident that motivated it. (An earlier draft of this docstring quoted
-    0.9911; the reviewer who owns the measurement has none that yields it, so it is gone.)
+    MEASURED, and the reason the default sits where it does: in the incident the dominant value
+    sat at share 0.999947 (= 1 - 249/4,744,661) - one value's worth of margin OVER a 0.999
+    trigger, by 249 rows - so this control fires on the incident's shape; the post-fix maximum
+    for the same family is 0.521829. Its actual blind spot is a collapse that splits its mass
+    across two values, or any share under the trigger. Calibrate this threshold from the
+    mechanism - what fraction of rows can legitimately share a value - never from the incident
+    that motivated it. (An earlier draft of this docstring quoted 0.9911; the reviewer who owns
+    the measurement has none that yields it, so it is gone. A later draft called 0.999947 "one
+    value's worth of margin under a 0.999 trigger"; 0.999947 >= 0.999, so the direction was
+    wrong - corrected 2026-09-19.)
 
     An all-empty column is reported as UNPOPULATED, not DEGENERATE: an empty string is
     one value, so a cardinality rule would call 12 legitimately-empty columns violations
@@ -269,6 +273,20 @@ def _cell(v) -> str:
         )
     else:
         s = str(v)
+        if " at 0x" in s:
+            # MEASURED (fourth review, 2026-09-19): `{"x": object()}` fell through to str() and
+            # produced TWO different digests in two processes - `<object object at 0x7f...>` carries
+            # the address - so re-running `verify_canonical` on unchanged data raised "canonical hash
+            # moved": a false alarm on the one control whose job is to say the data did not move, and
+            # a control that cries wolf gets muted. Refused like the container cell, for the same
+            # reason (a spelling that varies by process is not a record of the data): `memoryview`, a
+            # bare class instance and a function all spell the same way.
+            raise TypeError(
+                f"write boundary: canonical_hash hashes scalar cells; got {type(v).__name__}, whose "
+                f"text form carries a memory address ({s!r}). That text differs between processes, so "
+                f"the digest varies for data that did not change and the control false-alarms. Give it "
+                f"a text form at the boundary (str(), or json.dumps for a container shape)."
+            )
     return _esc(s)
 
 
