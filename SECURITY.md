@@ -9,8 +9,9 @@ and AI pipelines" might suggest.
 
 | Version | Supported | Notes |
 |---|---|---|
-| 0.2.x | ✅ | Current line. Fixes land here. |
-| `< 0.2` | ❌ | Superseded. Please reproduce on 0.2.x before reporting. |
+| 0.3.x | ✅ | Current line (`parity.__version__`). Fixes land here. |
+| 0.2.x | ❌ | Superseded. Please reproduce on 0.3.x before reporting. |
+| `< 0.2` | ❌ | Superseded. |
 
 The library is pure Python with no runtime dependencies (`dependencies = []` in
 `pyproject.toml`), so a fix is a text change and there is nothing to backport for.

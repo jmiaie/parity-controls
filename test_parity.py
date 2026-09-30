@@ -309,5 +309,24 @@ check("an explicit empty column set over real rows is refused too",
 check("not a regression test - an empty ROW SET stays legitimate (guard is not refuse-everything)",
       canonical_hash([]), want=hashlib.sha256(b"").hexdigest())
 
+
+print("\n1l. the fourth review (an adversarial probe, 2026-09-19): a cell with no text form")
+
+# Reproduced before the fix: {"x": object()} fell through `_cell`'s else-branch to str(), and
+# `<object object at 0x7f...>` carries the address, so the SAME row digested differently in two
+# processes - and verify_canonical raised "canonical hash moved" on data that had not moved.
+check("an object() cell is refused by name, not hashed as its own address",
+      raises_typeerror_with(lambda: canonical_hash([{"x": object()}]), "memory address"), want=True)
+check("a memoryview cell is refused too (its text spells an address as well)",
+      raises_typeerror_with(lambda: canonical_hash([{"x": memoryview(b"ab")}]), "memory address"), want=True)
+
+# The absent-column defect the same probe found (a row missing a column hashed like a row carrying
+# it null) was fixed in v0.3.0 and is pinned in tests/test_parity_pytest.py. What is pinned HERE is
+# that its NUL sentinel did not move a digest for data that carries every column - the two forms
+# below still agree, which is what keeps a digest stored before the fix reproducible after it.
+check("not a regression test - a fully populated schema still hashes like the schemaless form",
+      canonical_hash([{"a": 1, "b": "x"}], columns=["a", "b"]) == canonical_hash([{"b": "x", "a": 1}]),
+      want=True)
+
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)

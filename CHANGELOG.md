@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `examples/csv_position_book_gate.py` — stdlib CSV position-book write gate (refuse drift / missing
+  key; protect prior book; freeze-digest durable CSV-shaped cells).
+
+### Fixed
+
+- `pip install` failed at 0.3.0: `pyproject.toml` carried both `license = "MIT"` and the superseded
+  classifier `License :: OSI Approved :: MIT License`, which `setuptools>=77` rejects as
+  `InvalidConfigError`. Classifier removed.
+- `canonical_hash` refused cells whose `str()` carries a memory address (`object()`, `memoryview`,
+  …) — previously a false "canonical hash moved" alarm across processes. Pinned in `test_parity.py`
+  section 1l.
+- `tests/test_alarm_offline.py` defaults `PARITY_DIR` to this checkout (env still overrides).
+
+### Changed
+
+- README: CI callout matches reality (live on this public companion); fault-matrix count and
+  `python3 demo.py` corrected; cross-link to private hardening line; layout includes the CSV example.
+- `SECURITY.md` current line is **0.3.x**.
+- `docs/INCIDENT-0047.md` / `share_anomaly` docstring: pre-fix share `0.999947` is **over** the
+  `0.999` trigger, not under.
+
 
 ## [0.3.0] - 2026-09-18
 
