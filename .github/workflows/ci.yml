@@ -58,14 +58,25 @@ jobs:
           lockfile: ${{ runner.temp }}/parity.lock.json
       - name: mutate one cell
         run: sed -i 's/buy,long/buy,short/' "$RUNNER_TEMP/books/positions.csv"
-      - name: verify - moved data must be refused
+      - name: verify - moved data must be refused (default fails the step)
         id: moved
         continue-on-error: true
         uses: ./
         with:
           path: ${{ runner.temp }}/books
           lockfile: ${{ runner.temp }}/parity.lock.json
-      - name: the refusal happened
+      - name: verify - moved data, report-only, so the output can be read
+        id: report
+        uses: ./
+        with:
+          path: ${{ runner.temp }}/books
+          lockfile: ${{ runner.temp }}/parity.lock.json
+          fail-on-violation: "false"
+      - name: the refusal happened, and was named as a violation
+        env:
+          MOVED: ${{ steps.moved.outcome }}
+          RESULT: ${{ steps.report.outputs.result }}
         run: |
-          test "${{ steps.moved.outcome }}" = failure
-          test "${{ steps.moved.outputs.result }}" = violation
+          echo "moved.outcome=$MOVED report.result=$RESULT"
+          test "$MOVED" = failure
+          test "$RESULT" = violation

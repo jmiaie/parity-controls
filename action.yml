@@ -38,6 +38,13 @@ inputs:
     description: Python interpreter to run (3.10+)
     required: false
     default: python3
+  fail-on-violation:
+    description: >-
+      "true" fails the step on a violation. "false" reports it in the `result` output and
+      lets a later step decide (GitHub does not set a composite action's outputs when the
+      action itself fails, so read `result` only with "false").
+    required: false
+    default: "true"
 outputs:
   result:
     description: "frozen, verified, or violation"
@@ -55,6 +62,7 @@ runs:
         PARITY_LOCK: ${{ inputs.lockfile }}
         PARITY_PATTERN: ${{ inputs.pattern }}
         PARITY_PYTHON: ${{ inputs.python }}
+        PARITY_FAIL: ${{ inputs.fail-on-violation }}
         PYTHONPATH: ${{ github.action_path }}
       run: |
         set -uo pipefail
@@ -74,6 +82,7 @@ runs:
           echo "result=violation" >> "$GITHUB_OUTPUT"
           # First named problem as an annotation, the full text in the step log above.
           echo "::error title=parity-controls::$(grep -m1 "^  " "$err" || head -1 "$err")"
+          [ "$PARITY_FAIL" = false ] && rc=0
         fi
         rm -f "$err"
         exit "$rc"

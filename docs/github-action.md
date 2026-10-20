@@ -53,12 +53,16 @@ parity-controls freeze data/seeds --lock data/parity.lock.json
 | `lockfile` | `parity.lock.json` | lockfile path, relative to the workspace |
 | `pattern` | `*.csv` | glob under a directory; `freeze` only (`verify` reads it from the lockfile) |
 | `python` | `python3` | interpreter; run `actions/setup-python` first if the runner's is older than 3.10 |
+| `fail-on-violation` | `true` | `false` reports a violation in `result` without failing the step |
 
 ### Outputs
 
 | output | values |
 |---|---|
 | `result` | `frozen`, `verified`, `violation` (unset on a usage error, exit 2) |
+
+GitHub does not set a composite action's outputs when the action fails, so with the default
+`fail-on-violation: true` a failed run's `result` is empty; set it to `false` to branch on it.
 
 ## Blind spots
 
@@ -73,4 +77,5 @@ parity-controls freeze data/seeds --lock data/parity.lock.json
 ## Proof it refuses
 
 `.github/workflows/ci.yml`, job `action`, runs this action on `tests/fixtures/books`: freeze,
-verify, mutate one cell, then requires the second verify to fail with `result=violation`.
+verify, mutate one cell, then requires verify to fail the step by default and to report
+`result=violation` with `fail-on-violation: false`.
