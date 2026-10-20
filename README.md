@@ -28,9 +28,41 @@ pip install -e .                     # optional; the controls import as `parity`
 `make check` runs the gate (fault matrix, then the demo). No runtime dependencies. Python 3.10+.
 Short enough to read in one sitting.
 
-> **CI is live on this public companion.** `.github/workflows/ci.yml` runs the fault matrix and
-> the demo on every push and pull request. The private hardening line (`jmiaie/parity`) still parks
-> Actions when minutes are exhausted; safe fixes export here so the badge stays honest.
+## Install
+
+The distribution is **`parity-controls`**; the import name is **`parity`** (`parity` alone is
+taken on PyPI by an unrelated project).
+
+```bash
+pip install parity-controls          # once published - not yet on PyPI
+pip install git+https://github.com/jmiaie/parity-controls   # today
+```
+
+```python
+import parity
+parity.offered_present_parity(offered_keys, present_keys)
+```
+
+Optional extras, none of which `import parity` ever touches: `[dbt]` and `[great-expectations]`
+for the adapter skeletons in `parity_integrations/`, `[dev]` for pytest and ruff.
+
+## Freeze and verify in CI
+
+`parity-controls freeze PATH` writes canonical digests of every CSV under `PATH` to
+`parity.lock.json`; `parity-controls verify PATH` refuses (exit 1) if any file was added,
+removed, renamed or changed. The same flow is a GitHub Action (`action.yml`):
+
+```yaml
+- uses: jmiaie/parity-controls@<sha>
+  with:
+    path: data/seeds
+```
+
+Usage, outputs and blind spots: [`docs/github-action.md`](docs/github-action.md).
+
+> **CI is live on this repo.** `.github/workflows/ci.yml` runs the fault matrix, the demo and
+> `pytest` on every push and pull request, and runs `action.yml` against a fixture that it must
+> refuse once mutated.
 
 
 ## What the demo prints
@@ -354,10 +386,13 @@ test_parity.py    the gate: fault matrix + the rejected-check negative result
 demo.py           the same failure in dollars
 bench.py          the load measurement the README quotes
 examples/         quickstart + csv_position_book_gate (CSV write-boundary adapter)
-tests/            the alarm proof: an injected collapse, refused, at the real write boundary
+tests/            the alarm proof: an injected collapse, refused, at the real write boundary;
+                  pytest suites, including parity_integrations
+parity_integrations/  freeze/verify lockfile CLI + dbt and Great Expectations adapter skeletons
+action.yml        composite GitHub Action: freeze/verify CSV digests in CI
 tools/            audit_tests.py - run the suite against the PRE-fix module; a check that passes
                   on both detects nothing, and five of these did until it was pointed at one
-docs/             the incident this came from
+docs/             the incident this came from, PRD, ROADMAP, the action's usage
 adapters/         the nightly wrapper as installed, and where it is wired
 pyproject.toml    installable; `py-modules` is load-bearing, and the file says why
 LICENSE           MIT
@@ -365,7 +400,7 @@ LICENSE           MIT
 
 ## License and visibility
 
-**Public companion** of the private hardening line [`jmiaie/parity`](https://github.com/jmiaie/parity).
+**Public companion** of a private hardening line (not publicly visible, so not linked).
 Same four controls, MIT licensed, zero runtime dependencies. New adversarial fixes and product docs
 land privately first; this repo is the installable surface with live CI.
 
@@ -374,5 +409,4 @@ exists the honest state is "unproven in production". What *is* proven is that th
 real write goes wrong on an injected fault. Cost today: zero dependencies, zero cloud.
 
 - **Licensed MIT.** Visibility and licensing are different decisions.
-- **CI is live** (`.github/workflows/ci.yml`). The private sibling parks Actions when minutes are
-  exhausted; export safe fixes here so red still means something.
+- **CI is live** (`.github/workflows/ci.yml`). Export safe fixes here so red still means something.

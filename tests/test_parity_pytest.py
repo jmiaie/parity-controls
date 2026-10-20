@@ -43,6 +43,7 @@ except ImportError:  # bare container: keep the direct-invocation path below hon
         def __exit__(self, exc_type, exc, tb):
             if exc_type is None:
                 raise AssertionError(f"DID NOT RAISE {self.expected.__name__}")
+            self.value = exc  # what `pytest.raises(...) as e` exposes as `e.value`
             return issubclass(exc_type, self.expected)
 
     class _PytestShim:
@@ -235,6 +236,18 @@ def test_cross_field_on_a_key_absent_from_the_mapping_raises_pinned_as_is():
         cross_field([(0, "Yes")], {}, name="outcome_index<->outcome")
     # A key that IS declared, and agrees with its domain, stays silent.
     assert cross_field([(0, "Yes")], LABEL, name="outcome_index<->outcome") is True
+
+
+def test_cross_field_refuses_a_string_domain_instead_of_substring_matching():
+    # Regression (2026-10-19): {"US": "USA"} accepted "S", because `in` on a str is a
+    # substring test. Assert the MESSAGE: a bare TypeError assertion would not name the fix.
+    with pytest.raises(TypeError) as exc:
+        cross_field([("US", "S")], {"US": "USA"}, name="country")
+    assert "substring test" in str(exc.value)
+    # The collection form keeps working, and still fires on the fragment.
+    assert cross_field([("US", "USA")], {"US": ("USA",)}) is True
+    with pytest.raises(ParityViolation):
+        cross_field([("US", "S")], {"US": ("USA",)})
 
 
 def test_offered_present_parity_returns_true_when_the_key_sets_are_equal():

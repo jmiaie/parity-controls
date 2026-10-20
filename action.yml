@@ -1,0 +1,89 @@
+# parity-controls: freeze and verify canonical digests of CSV files in CI.
+#
+#   - uses: jmiaie/parity-controls@<tag-or-sha>
+#     with:
+#       path: data/seeds            # a CSV file, or a directory searched recursively
+#       lockfile: parity.lock.json  # committed next to the data
+#
+# mode: verify (default) refuses the job if any file was added, removed, renamed or changed
+# since the lockfile was frozen. mode: freeze (re)writes the lockfile - run it locally or in a
+# job that commits the result, and review that diff: a lockfile rewritten in the same commit
+# as the data passes verify by construction. Full usage: docs/github-action.md.
+#
+# Zero install: the action runs the library straight from its own checkout with the runner's
+# python3 (3.10+). Run actions/setup-python first if your runner's python3 is older.
+name: parity-controls freeze/verify
+description: Refuse a CI run when CSV data at rest moved without its lockfile (canonical sha256 digests).
+author: Micap AI LLC
+branding:
+  icon: lock
+  color: gray-dark
+inputs:
+  mode:
+    description: "verify (refuse if anything moved) or freeze (write the lockfile)"
+    required: false
+    default: verify
+  path:
+    description: A CSV file, or a directory searched recursively for `pattern`
+    required: true
+  lockfile:
+    description: Lockfile path, relative to the workspace
+    required: false
+    default: parity.lock.json
+  pattern:
+    description: "Glob for files under a directory (freeze only; verify reads it from the lockfile)"
+    required: false
+    default: "*.csv"
+  python:
+    description: Python interpreter to run (3.10+)
+    required: false
+    default: python3
+  fail-on-violation:
+    description: >-
+      "true" fails the step on a violation. "false" reports it in the `result` output, exits
+      0 and lets a later step decide.
+    required: false
+    default: "true"
+outputs:
+  result:
+    description: "frozen, verified, or violation"
+    value: ${{ steps.run.outputs.result }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      # Inputs travel as environment variables, never interpolated into the script, so a path
+      # containing shell syntax cannot become a command.
+      env:
+        PARITY_MODE: ${{ inputs.mode }}
+        PARITY_PATH: ${{ inputs.path }}
+        PARITY_LOCK: ${{ inputs.lockfile }}
+        PARITY_PATTERN: ${{ inputs.pattern }}
+        PARITY_PYTHON: ${{ inputs.python }}
+        PARITY_FAIL: ${{ inputs.fail-on-violation }}
+        PYTHONPATH: ${{ github.action_path }}
+      run: |
+        # GitHub runs `shell: bash` as `bash -eo pipefail`; -e would end the script at the
+        # python exit code before rc is read, so no annotation, no output, no report-only mode.
+        set +e -uo pipefail
+        case "$PARITY_MODE" in
+          freeze) args=(freeze "$PARITY_PATH" --lock "$PARITY_LOCK" --pattern "$PARITY_PATTERN") ;;
+          verify) args=(verify "$PARITY_PATH" --lock "$PARITY_LOCK") ;;
+          *) echo "::error::mode must be 'freeze' or 'verify', got '$PARITY_MODE'"; exit 2 ;;
+        esac
+        err=$(mktemp)
+        "$PARITY_PYTHON" -m parity_integrations.lockfile "${args[@]}" 2>"$err"
+        rc=$?
+        cat "$err" >&2
+        if [ "$rc" -eq 0 ]; then
+          [ "$PARITY_MODE" = freeze ] && echo "result=frozen" >> "$GITHUB_OUTPUT" \
+                                      || echo "result=verified" >> "$GITHUB_OUTPUT"
+        elif [ "$rc" -eq 1 ]; then
+          echo "result=violation" >> "$GITHUB_OUTPUT"
+          # First named problem as an annotation, the full text in the step log above.
+          echo "::error title=parity-controls::$(grep -m1 "^  " "$err" || head -1 "$err")"
+          [ "$PARITY_FAIL" = false ] && rc=0
+        fi
+        rm -f "$err"
+        exit "$rc"

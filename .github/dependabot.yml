@@ -9,8 +9,8 @@ updates:
     schedule:
       interval: "weekly"
 
-  # CI is parked as .github/workflows/ci.yml.disabled, but the workflow file still pins its
-  # actions, and it comes back to life if the repo goes public. Version bumps stay cheap.
+  # CI is live (.github/workflows/ci.yml) and pins its actions; keep the bumps coming so the
+  # pins stay current. action.yml is a composite action and pins nothing of its own.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

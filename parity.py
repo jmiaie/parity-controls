@@ -134,8 +134,24 @@ def cross_field(pairs, mapping, *, name: str = "cross-field", sample: int = 3) -
     forces a column to a default, the other column describing the same fact still carries
     the truth, so the disagreement is arithmetic rather than statistical - no threshold,
     no N floor, no documented domain to guess at.
+
+    Each mapping value is a COLLECTION of allowed values, never a bare string. MEASURED
+    (2026-10-19): `cross_field([("US", "S")], {"US": "USA"})` returned True, because `in` on a
+    string is a substring test - "S", "US" and "" all passed as members of the domain "USA".
+    Refused by name, the same way `offered_present_parity` refuses a string for a key set:
+    write `{"US": ("USA",)}`.
     """
-    bad = [(a, b) for a, b in pairs if b not in mapping.get(a, ())]
+    def allowed(a):
+        domain = mapping.get(a, ())
+        if isinstance(domain, (str, bytes)):
+            raise TypeError(
+                f"{name}: mapping[{a!r}] is a {type(domain).__name__} ({domain!r}); `in` on a "
+                f"string is a substring test, so a fragment of it would pass as a member. Pass "
+                f"a collection of allowed values: {{{a!r}: ({domain!r},)}}"
+            )
+        return domain
+
+    bad = [(a, b) for a, b in pairs if b not in allowed(a)]
     if bad:
         raise ParityViolation(
             f"{name}: {len(bad)} rows contradict their declared domain; e.g. {bad[:sample]}"

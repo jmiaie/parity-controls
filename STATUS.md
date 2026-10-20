@@ -3,7 +3,7 @@
 **Updated:** 2026-09-30 (PT)  
 **Visibility:** public  
 **Maturity:** MVP / public package surface (v0.3.0)  
-**Role:** **Public companion** to private [`jmiaie/parity`](https://github.com/jmiaie/parity)
+**Role:** **Public companion** to private `jmiaie/parity` (private; not linked because it 404s for public visitors)
 
 ## Honest positioning
 

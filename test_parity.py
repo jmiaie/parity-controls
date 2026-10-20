@@ -328,5 +328,19 @@ check("not a regression test - a fully populated schema still hashes like the sc
       canonical_hash([{"a": 1, "b": "x"}], columns=["a", "b"]) == canonical_hash([{"b": "x", "a": 1}]),
       want=True)
 
+print("\n1m. cross_field: a string domain is a substring test, not a set of values")
+
+# Reproduced before the fix (2026-10-19): cross_field([("US", "S")], {"US": "USA"}) returned True,
+# because `"S" in "USA"` is a substring test. Same family as 1g, one control over.
+check("a str mapping value is refused by name, not used as a substring domain",
+      raises_typeerror_with(lambda: cross_field([("US", "S")], {"US": "USA"}), "substring test"),
+      want=True)
+check("a bytes mapping value is refused too",
+      raises_typeerror_with(lambda: cross_field([("US", b"S")], {"US": b"USA"}), "substring test"),
+      want=True)
+check("not a regression test - a tuple domain still accepts its member and refuses a fragment",
+      (fires(lambda: cross_field([("US", "USA")], {"US": ("USA",)})),
+       fires(lambda: cross_field([("US", "S")], {"US": ("USA",)}))), want=(False, True))
+
 print(f"\n{'ALL PASS' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)}")
 sys.exit(1 if FAILS else 0)
