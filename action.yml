@@ -40,9 +40,8 @@ inputs:
     default: python3
   fail-on-violation:
     description: >-
-      "true" fails the step on a violation. "false" reports it in the `result` output and
-      lets a later step decide (GitHub does not set a composite action's outputs when the
-      action itself fails, so read `result` only with "false").
+      "true" fails the step on a violation. "false" reports it in the `result` output, exits
+      0 and lets a later step decide.
     required: false
     default: "true"
 outputs:
@@ -65,7 +64,9 @@ runs:
         PARITY_FAIL: ${{ inputs.fail-on-violation }}
         PYTHONPATH: ${{ github.action_path }}
       run: |
-        set -uo pipefail
+        # GitHub runs `shell: bash` as `bash -eo pipefail`; -e would end the script at the
+        # python exit code before rc is read, so no annotation, no output, no report-only mode.
+        set +e -uo pipefail
         case "$PARITY_MODE" in
           freeze) args=(freeze "$PARITY_PATH" --lock "$PARITY_LOCK" --pattern "$PARITY_PATTERN") ;;
           verify) args=(verify "$PARITY_PATH" --lock "$PARITY_LOCK") ;;

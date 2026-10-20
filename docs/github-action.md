@@ -61,8 +61,8 @@ parity-controls freeze data/seeds --lock data/parity.lock.json
 |---|---|
 | `result` | `frozen`, `verified`, `violation` (unset on a usage error, exit 2) |
 
-GitHub does not set a composite action's outputs when the action fails, so with the default
-`fail-on-violation: true` a failed run's `result` is empty; set it to `false` to branch on it.
+To branch on `result` in a later step without failing the job, set `fail-on-violation: false`
+(CI tests that form; it does not rely on a failed composite action exposing its outputs).
 
 ## Blind spots
 
