@@ -10,8 +10,12 @@ open-source project it is not trying to be.
   imports only `collections`, `hashlib` and `math`. A pull request that adds a runtime
   dependency will be rejected: zero dependencies is a claim the README makes and the
   packaging enforces (`dependencies = []` in `pyproject.toml`).
-- **The checks are plain scripts**, not a test framework. That is why there is no `pytest`
-  in the dependency list, and why "run the checks" means running files.
+- **The core checks are plain scripts**, not a test framework: `test_parity.py` and `demo.py`
+  run with no install. `tests/` is collected by `pytest` (the `dev` extra), which CI also runs;
+  the adapter tests there skip when dbt / Great Expectations are not installed.
+- **Integrations stay outside the core.** `parity_integrations/` holds the lockfile CLI and the
+  dbt / Great Expectations adapters. They may use optional extras, imported lazily, and must
+  raise `MissingDependency` naming the extra; `import parity` must never import them.
 - **A control that has never been observed to fail is not a control.** This is the project's
   core discipline and the bar every change is held to (see *Adding a control*).
 - **A document that overclaims is the failure this repo exists to name.** If your change
@@ -65,22 +69,18 @@ legitimately share a value — never from the incident that motivated it.
 - Keep diffs small and purposeful. This repo is short on purpose — it is meant to be
   readable in one sitting, which is a property a large change can break.
 
-## CI is parked
+## CI is live
 
-`.github/workflows/ci.yml.disabled` is the gate, disabled rather than broken: on a private
-repo for this account the Actions minutes are exhausted, so the job was created and no
-runner ever picked it up. It was disabled instead of left failing because **a check that
-fails on every commit trains its owner to ignore red** — worse than no check at all.
+`.github/workflows/ci.yml` runs on every push and pull request on this public repo: the fault
+matrix and the demo as plain scripts, then `pytest` over `tests/` after installing the package
+with its dev extra, on Python 3.10 and 3.12; and a second job that runs `action.yml` against
+`tests/fixtures/books` and requires it to **refuse** a mutated file.
 
-Two consequences:
-
-- **Run the checks locally before pushing.** That is the contract, since CI is not watching.
-- The push path took CI's job: any repo's `test_*.py` must pass before the push helper will
-  land anything (`SKIP_TESTS=1` is the deliberate escape hatch for a hotfix).
-
-Re-enable with `git mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml` once
-minutes exist, the repo goes public (Actions is unmetered on public repos), or a
-self-hosted runner is registered.
+History: the private sibling line parked the same workflow (`ci.yml.disabled`) when its Actions
+minutes ran out, on the principle that **a check that fails on every commit trains its owner to
+ignore red**. That principle still holds here: if CI goes red for a reason that is not the code,
+fix or park it explicitly rather than leaving it red. Run `make check` and `make pytest` locally
+before pushing either way.
 
 ## Reporting, licensing, review
 

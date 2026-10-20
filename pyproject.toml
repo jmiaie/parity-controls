@@ -3,7 +3,10 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "parity"
+# The DISTRIBUTION is `parity-controls` (`pip install parity-controls`): the name `parity` is
+# already taken on PyPI. The IMPORT name is unchanged - `import parity` - because the module is
+# one flat file and renaming it would break every caller for no gain.
+name = "parity-controls"
 version = "0.3.0"
 description = "Write-boundary integrity for financial data and AI pipelines"
 readme = "README.md"
@@ -41,6 +44,14 @@ dev = [
     "pytest>=7",
     "ruff>=0.6",
 ]
+# Optional integrations (parity_integrations/). Each adapter imports its dependency lazily and
+# raises MissingDependency naming the extra, so `import parity` never pulls these in.
+dbt = ["dbt-core>=1.5"]
+great-expectations = ["great_expectations>=1.0"]
+
+[project.scripts]
+# freeze/verify canonical digests of CSV files at rest - the flow action.yml runs in CI.
+parity-controls = "parity_integrations.lockfile:main"
 
 [tool.setuptools]
 # NOT optional. Without it, auto-discovery sees a flat layout with no package directory and
@@ -48,6 +59,8 @@ dev = [
 # copy while working fine from the checkout - the worst kind of packaging bug, because the
 # repo's own tests never touch it. Verified by installing the wheel into a clean venv.
 py-modules = ["parity"]
+# The integrations live in their own package so the core module stays one readable file.
+packages = ["parity_integrations"]
 
 [tool.pytest.ini_options]
 # testpaths keeps a bare `pytest` pointed at this repo's own gate rather than whatever

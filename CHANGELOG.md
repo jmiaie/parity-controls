@@ -9,10 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `parity_integrations/lockfile.py` and the `parity-controls` console script: `freeze` / `verify`
+  canonical digests of CSV files at rest; refuses moved, added, removed or renamed files, ragged
+  rows and duplicated headers, each by name.
+- `action.yml`: composite GitHub Action running freeze/verify; usage in `docs/github-action.md`.
+  CI runs it on a fixture and requires a refusal once the fixture is mutated.
+- dbt and Great Expectations adapter skeletons (`parity_integrations/dbt.py`,
+  `parity_integrations/great_expectations.py`) behind the `[dbt]` and `[great-expectations]`
+  extras, imported lazily; unbuilt calls raise `NotImplementedError` pointing at the roadmap.
+- `docs/PRD.md`, `docs/ROADMAP.md`.
+
 - `examples/csv_position_book_gate.py` — stdlib CSV position-book write gate (refuse drift / missing
   key; protect prior book; freeze-digest durable CSV-shaped cells).
 
 ### Fixed
+
+- `cross_field` accepted a fragment of a string domain: `{"US": "USA"}` let `"S"` through, because
+  `in` on a `str` is a substring test. A `str`/`bytes` mapping value is now refused with a named
+  `TypeError`, like `offered_present_parity` refuses a string key set. Pinned in `test_parity.py`
+  section 1m and `tests/test_parity_pytest.py`.
 
 - `pip install` failed at 0.3.0: `pyproject.toml` carried both `license = "MIT"` and the superseded
   classifier `License :: OSI Approved :: MIT License`, which `setuptools>=77` rejects as
@@ -23,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_alarm_offline.py` defaults `PARITY_DIR` to this checkout (env still overrides).
 
 ### Changed
+
+- **Distribution renamed `parity` -> `parity-controls`** (`parity` is taken on PyPI). The import
+  name is still `parity`.
+- CI: the workflow, Makefile, dependabot, CONTRIBUTING and PR template no longer describe CI as
+  parked; CI also runs `pytest` over `tests/` on Python 3.10 and 3.12. `make pytest` added.
+- README / STATUS / POSITIONING no longer link the private sibling repo (it 404s for public
+  visitors).
 
 - README: CI callout matches reality (live on this public companion); fault-matrix count and
   `python3 demo.py` corrected; cross-link to private hardening line; layout includes the CSV example.

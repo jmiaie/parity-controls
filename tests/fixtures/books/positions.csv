@@ -1,0 +1,4 @@
+trade_id,symbol,side,position,qty,px
+P-2401,AAPL,buy,long,100,190.25
+P-2402,MSFT,sell,short,50,420.10
+P-2403,NVDA,buy,long,25,880.00

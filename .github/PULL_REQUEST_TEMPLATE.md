@@ -1,4 +1,4 @@
-<!-- CI is parked (.github/workflows/ci.yml.disabled), so this checklist IS the gate. -->
+<!-- CI runs on every PR (.github/workflows/ci.yml); this checklist covers what CI cannot judge. -->
 
 ## What this changes
 
@@ -8,6 +8,7 @@
 
 - [ ] Ran `python3 test_parity.py` — result: <!-- PASS/FAIL, and the count -->
 - [ ] Ran `python3 demo.py` — result: <!-- the numbers it printed -->
+- [ ] Ran `python3 -m pytest -q` — result: <!-- passed / skipped counts -->
 - [ ] Added no third-party runtime dependency (the library is stdlib only)
 - [ ] If a new control was added: it ships with a fault in `faults.py` that makes it fire,
       **and** a case in the fault matrix that proves it fires
